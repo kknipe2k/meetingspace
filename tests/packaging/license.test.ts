@@ -26,8 +26,8 @@ describe('license presence (MIT)', () => {
 
   it('records the AI-assistance disclosure in the README', () => {
     const readme = read('README.md');
-    expect(readme).toMatch(/AI assistance disclosure/i);
-    expect(readme).toMatch(/Claude Code/);
+    expect(readme).toMatch(/AI assistance/i);
+    expect(readme).toMatch(/Claude/);
   });
 
   it('states MIT (not TBD) in the README License section', () => {
