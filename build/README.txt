@@ -49,5 +49,6 @@ right-click -> Open. On Windows, SmartScreen may warn on first run.
 AI assistance
 -------------
 
-MeetingSpace was built with substantial AI assistance (Anthropic's Claude);
-all changes were human-reviewed.
+MeetingSpace was written almost entirely by AI (Anthropic's Claude), which also
+did the code review and testing. There was no line-by-line human code review;
+a human validated the app by running it and confirming the tests passed clean.
