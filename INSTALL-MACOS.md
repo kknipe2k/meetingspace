@@ -60,7 +60,7 @@ Confirm the core flow works end-to-end:
 
 - **Boot:** the window opens and renders the main UI (sidebar + canvas). No crash, no blank window.
 - **Capture:** create a **space**, add a **typed note** (it autosaves), and add a **screenshot** — drag an image in, paste one (**⌘V**), or use in-app capture. It appears inline; click to expand, click again to close.
-- **Claude (needs your Anthropic API key):** open **Settings**, paste your key (`sk-ant-…`; stored encrypted in the macOS Keychain). **Chat** a question about your notes → a streamed answer appears. **Generate** a white paper or minutes → a formatted document renders. **Export** to HTML → it opens self-contained in a browser with no network requests.
+- **Claude (needs your Anthropic API key):** open **Settings**, paste your key (`sk-ant-…`; stored encrypted in the macOS Keychain). **Chat** a question about your notes → a streamed answer appears. **Generate** a white paper or minutes → a formatted document renders (a full white paper can take **10+ minutes** — that's expected, let it run). **Export** to HTML → it opens self-contained in a browser with no network requests.
 - **Persistence:** **quit** the app (⌘Q), **reopen** it — your space, notes, screenshots, and generated docs are all still there.
 
 ✅ **Pass** = every step works, especially boot + persistence.

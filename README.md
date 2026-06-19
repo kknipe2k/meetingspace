@@ -54,6 +54,8 @@ The capture side — notes, screenshots, transcripts, search, autosave — works
 - **This is not a Claude.ai login.** It does **not** use a Claude Pro/Max web subscription — only a pay-per-use API key from the Anthropic Console.
 - **Add it any time:** there's a field on the first-run welcome screen, and in **Settings**. The app picks available Claude models automatically.
 
+> **Generating a document takes time — be patient.** A full white paper is built in stages and can take **10+ minutes** to finish. The app shows progress while it works; that's expected, so leave it running rather than assuming it stalled. (Chat replies stream back quickly; it's the long-form documents that take a while.)
+
 > **Advanced:** if your organization runs an Anthropic-compatible gateway/proxy, you can point MeetingSpace at it (a base URL plus a bearer token) in Settings instead of using a direct Anthropic key.
 
 ---
