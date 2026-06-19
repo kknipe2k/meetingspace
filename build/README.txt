@@ -49,5 +49,5 @@ right-click -> Open. On Windows, SmartScreen may warn on first run.
 AI assistance
 -------------
 
-MeetingSpace is built with Claude Code under the Build Framework methodology;
-all work is human-reviewed before merge.
+MeetingSpace was built with substantial AI assistance (Anthropic's Claude);
+all changes were human-reviewed.

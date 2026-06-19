@@ -1,134 +1,109 @@
 # MeetingSpace
 
-A Windows-first (macOS-portable) **desktop note-taking app for meetings** — a graphical, OneNote-style workspace with a Claude-powered LLM layer built in. Local-first, single-user, your data stays on your machine.
+A **desktop note-taking app for meetings**, with a Claude assistant built in. Capture everything during a meeting — typed notes, screenshots, and transcripts — and let Claude turn it into a polished white paper, structured minutes, or searchable notes.
 
-> **Status:** **v1.1 — released** (Windows-first; macOS builds from source). Open-source under the MIT License. Built with Claude Code — see [AI assistance disclosure](#ai-assistance-disclosure).
+Local-first and single-user: your data stays on **your** machine. Windows and macOS.
+
+> **Status:** v1.1 — released. Free and open-source (MIT). Built with Claude.
 
 <!-- TODO: add a screenshot or short demo GIF here — it's the first thing a new visitor looks for. -->
 <!-- ![MeetingSpace](docs/screenshot.png) -->
 
 ---
 
-## What it is
+## What it does
 
-Create a **named space** for a meeting. During the meeting, drop in:
+Create a **named space** for a meeting, then drop things in as it happens:
 
-- **Typed notes** (autosaved)
-- **Screenshots** — drag-drop, clipboard paste, file upload, or in-app screen capture
-- **Transcripts** — paste or upload text
+- **Typed notes** — autosaved as you go, no save button.
+- **Screenshots** — drag-and-drop, paste from the clipboard (Ctrl/⌘+V), upload a file, or capture your screen from inside the app.
+- **Transcripts** — paste or upload text.
 
-Everything saves to the named space and is fully retrievable later. A built-in **Claude layer** (using *your own* Anthropic API key) then turns a captured session into, on demand:
+Everything is saved to that space and stays fully searchable later. When you're ready, the built-in **Claude** layer turns a captured session into, on demand:
 
 - a detailed **white paper**,
-- structured **meeting minutes with screenshots**, or
-- just the **raw notes**, saved and searchable.
+- structured **meeting minutes** (with your screenshots inline), or
+- just your **raw notes**, organized and searchable.
 
-There's also an in-app Claude **chat** grounded in the current session's content.
+There's also an in-app **chat** with Claude that's grounded in the current space's content — ask questions about what you captured without leaving the app. Generated documents can be **exported** to a self-contained HTML file (images embedded, opens in any browser, makes no network calls) or to **PDF**.
 
-## What it isn't
+### What it isn't
 
-- **Not** a live audio recorder / speech-to-text engine — transcripts come in as text (live STT is a v2 idea).
-- **Not** real-time collaboration or cloud sync — it's local-first and single-user.
+- **Not** a live audio recorder or speech-to-text — transcripts come in as text you paste or upload.
+- **Not** cloud sync or real-time collaboration — it's local-first and single-user.
 - **Not** a mobile app.
-- It does **not** use a Claude.ai web-subscription login — it talks to the Anthropic API with **your API key**, stored encrypted in the OS keychain (never plaintext).
 
 ---
 
-## Getting started
+## How the Claude features work (your API key)
 
-There are two ways in. **Most people want "Use it."**
+The capture side — notes, screenshots, transcripts, search, autosave — works with **no key at all**. The Claude features (chat, white paper, minutes) call the **Anthropic API using your own key**.
 
-### 🟢 Use it (build & run on your machine)
+- **What you need:** your own Anthropic API key (it looks like `sk-ant-…`). Create one at <https://console.anthropic.com>.
+- **It's pay-per-use.** You're billed by Anthropic for what you use. **Set a spend limit** on your key — see [API key best practices](https://support.claude.com/en/articles/9767949-api-key-best-practices-keeping-your-keys-safe-and-secure).
+- **Where it's stored:** encrypted by your operating system (Windows DPAPI / macOS Keychain) and used only inside the app's background process — it's **never written to disk or logs in plaintext, and never leaves your machine** except as the API request you trigger.
+- **This is not a Claude.ai login.** It does **not** use a Claude Pro/Max web subscription — only a pay-per-use API key from the Anthropic Console.
+- **Add it any time:** there's a field on the first-run welcome screen, and in **Settings**. The app picks available Claude models automatically.
 
-MeetingSpace ships as **source you build locally** — no paid code-signing certificates, nothing pre-built running on your machine that you didn't compile yourself. It takes ~15 minutes and a couple of commands. Follow the step-by-step guide for your OS:
+> **Advanced:** if your organization runs an Anthropic-compatible gateway/proxy, you can point MeetingSpace at it (a base URL plus a bearer token) in Settings instead of using a direct Anthropic key.
 
-- **Windows** → **[WINDOWS-PACKAGE-README.md](WINDOWS-PACKAGE-README.md)** (prerequisites → build → run → uninstall)
-- **macOS** → **[MACOS-PACKAGE-README.md](MACOS-PACKAGE-README.md)** (prerequisites → build → run → uninstall)
-- **Linux** — not packaged or tested. Advanced users can run it from source with `npm install && npm run dev` (it's Electron + better-sqlite3, so it should work, but there's no supported build or IRL validation yet).
+---
 
-> **You'll need your own Anthropic API key for the Claude features.** Notes, screenshots, transcripts, search, and persistence all work with **no key**. Chat / white-paper / minutes generation call the **Anthropic API with your key**, which is **pay-per-use** — create a key at <https://console.anthropic.com>, and **set a spend limit** ([key best practices](https://support.claude.com/en/articles/9767949-api-key-best-practices-keeping-your-keys-safe-and-secure)). Your key is stored encrypted by your OS (Windows DPAPI / macOS Keychain) and never leaves your machine in plaintext.
+## Download & run
 
-> **Unsigned build.** Because there are no paid certs, the first launch may show a one-time warning (Windows SmartScreen / macOS Gatekeeper). Each OS guide includes the exact one-click bypass — this is expected, nothing is wrong.
+> **Prebuilt downloads** for Windows and macOS are published on the [**Releases**](https://github.com/kknipe2k/meetingspace/releases) page. If no release is posted yet, use **Build from source** below — it's a couple of commands.
 
-### 🛠️ Build from source / contribute
+| Your system | Get it | First-run note |
+|---|---|---|
+| **Windows 10 / 11** | `MeetingSpace Setup <version>.exe` (installer) **or** the portable `.zip` (no install) | SmartScreen may warn → **More info → Run anyway** (one time) |
+| **macOS** (Apple Silicon or Intel) | `MeetingSpace-<version>.dmg` **or** the `.zip` — pick the file matching your chip | Gatekeeper warns → **right-click the app → Open** (one time) |
+| **Linux** | Build from source (not packaged) | — |
+
+**Unsigned build.** These builds aren't code-signed (no paid certificates), so each OS shows a one-time warning the first time you run an unsigned app. That's expected — the steps above (and the install guides) get you past it in one click.
+
+Step-by-step guides, including the first-run bypass and how to **completely uninstall** (app + data):
+
+- **Windows →** [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md)
+- **macOS →** [INSTALL-MACOS.md](INSTALL-MACOS.md)
+
+### Build from source (any OS)
+
+You need [Node.js](https://nodejs.org) 18 or newer. On Windows you may need the Visual Studio Build Tools (C++ workload); on macOS, the Xcode Command Line Tools (`xcode-select --install`). Then:
 
 ```bash
-npm install        # installs deps + prepares better-sqlite3 for Electron's ABI
-npm run dev        # launch the app in development
-npm test           # unit/component tests
-npm run e2e        # Playwright-on-Electron smoke
-npm run build      # production build
-npm run package:win  # Windows NSIS installer  → release/
-npm run package:mac  # macOS .dmg + .zip (run ON A MAC — can't cross-build from Windows)
+git clone https://github.com/kknipe2k/meetingspace.git
+cd meetingspace
+npm install            # installs dependencies, prepares the native database module
+npm run dev            # launch the app
 ```
 
----
+To produce an installable build instead of running in dev:
 
-## Stack
+```bash
+npm run package:win    # Windows installer + portable zip  → release/
+npm run package:mac    # macOS .dmg + .zip  (must run ON a Mac — can't cross-build)
+```
 
-| Layer | Choice |
-|---|---|
-| Desktop shell | **Electron** (Node main process owns all privileged work) |
-| UI | **React + TypeScript + Vite** (sandboxed renderer) |
-| Storage | **better-sqlite3** (metadata + retrieval) + filesystem blobs for screenshots, per session |
-| LLM | official **`@anthropic-ai/sdk`**, called only from the main process |
-| Secrets | Electron **`safeStorage`** (Windows DPAPI / macOS Keychain) |
-| Screen capture | Electron **`desktopCapturer`** |
-
-Security model: `contextIsolation: true`, `nodeIntegration: false`, sandboxed renderer; the renderer never sees the API key and reaches native work only over a typed IPC contract. An independent code/security audit was run before open-sourcing — see [`AUDIT-FINDINGS.md`](AUDIT-FINDINGS.md).
+The per-OS guides cover prerequisites and troubleshooting in detail.
 
 ---
 
-## What shipped (v1.1)
+## Your data & privacy
 
-| Milestone | Goal |
-|---|---|
-| **M01** | App shell + storage foundation — three-zone shell; named sessions persist across close→reopen |
-| **M02** | Live capture surface — notes, screenshots (all four paths), transcripts |
-| **M03** | Claude integration + secure key — encrypted API key, in-app chat over session content |
-| **M04** | Document generation + retrieval — white paper / minutes / raw notes + cross-session search |
-| **M05** | Polish + cross-platform + packaging (v1 release) |
-| **M07** | Generation robustness + providers — real cancel, watchdog, provider switch |
-| **M06** | Desktop maturity + distribution — native menus, storage tools, backup/restore, onboarding (v1.1 release) |
+- **Everything is stored locally** on your device — the notes database, your screenshots, the encrypted API-key blob, and your settings. Nothing is uploaded anywhere.
+- **No telemetry, no analytics, no "phone home."** The only outbound network request the app ever makes is the Claude API call you trigger with your own key.
+- **Your API key is encrypted at rest** by the OS keychain and never stored or logged in plaintext.
+- **Generated documents are isolated.** Content Claude generates is sanitized and rendered in a sandboxed frame; an exported HTML file carries a strict policy that prevents it from making any network request when you share it.
+- **Back up any time:** Settings → *Back up all data* writes a single portable file you can restore later.
 
-**v2 backlog** (ideas, not committed): live audio transcription / STT, multi-space organization, rich-text note editing.
+Where your data lives (and how to wipe it completely) is documented in the per-OS install guides.
 
 ---
 
-## Design
+## License & credits
 
-The UI follows a single design brief in **`docs/design.md`** — a light, spacious "Linear-in-daylight" system (one lavender accent, hairline borders, generous whitespace).
+- **License:** [MIT](LICENSE). Copyright © 2026 MeetingSpace Project Contributors.
+- **AI assistance:** MeetingSpace was built with substantial AI assistance (Anthropic's Claude); all changes were human-reviewed.
+- **Fonts:** generated documents self-host **Inter** and **Merriweather**, both under the SIL Open Font License 1.1 — full attribution in [`assets/fonts/NOTICE.md`](assets/fonts/NOTICE.md).
 
----
-
-## AI assistance disclosure
-
-MeetingSpace was implemented with substantial AI assistance (Anthropic's Claude, via Claude Code). All changes were human-reviewed before merge.
-
----
-
-## Fonts
-
-Generated documents (white paper / minutes) self-host two typefaces so the designed typography renders offline inside the sandboxed render frame (M04.C, ADR-0013):
-
-- **Inter** — © The Inter Project Authors — SIL Open Font License 1.1
-- **Merriweather** — © The Merriweather Project Authors — SIL Open Font License 1.1
-
-License texts and full attribution: [`assets/fonts/NOTICE.md`](assets/fonts/NOTICE.md).
-
----
-
-## Project status & contributing
-
-Shared as-is and lightly maintained — there's no guaranteed review cadence, but contributions are welcome if you'd like to build on it.
-
-- **Issues are disabled.** This is a personal project published for others to use and fork, not a supported product.
-- **Want to extend it?** Fork and open a pull request with a DCO sign-off (`git commit -s`, asserting the [Developer Certificate of Origin](https://developercertificate.org/)). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, the quality gates, and the full workflow.
-- **Security:** please don't open a public report — see [`SECURITY.md`](SECURITY.md). Use [GitHub Security Advisories](https://github.com/kknipe2k/meetingspace/security/advisories/new) (preferred) or email `ardenagentic+security@gmail.com` privately.
-
----
-
-## License
-
-MeetingSpace is released under the **MIT License** — see [`LICENSE`](LICENSE).
-Copyright (c) 2026 MeetingSpace Project Contributors.
+*Shared as-is and not actively maintained — feel free to fork it. For security reports, see [SECURITY.md](SECURITY.md).*

@@ -3,7 +3,7 @@
 MeetingSpace self-hosts two typefaces for the **generated-document** render and
 export (white paper, minutes), so the designed typography renders with **zero
 network** — the render iframe is `sandbox=""` (an opaque origin), so the fonts ride
-as base64 `data:` URIs in an injected `@font-face` block (see ADR-0013). The app's
+as base64 `data:` URIs in an injected `@font-face` block. The app's
 own UI is unaffected.
 
 Both fonts are licensed under the **SIL Open Font License, Version 1.1** (OFL-1.1).

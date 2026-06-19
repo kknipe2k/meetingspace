@@ -9,7 +9,7 @@
 #   Windows — `MeetingSpace Setup <ver>.exe` (NSIS installer) + a portable `.zip`
 #   macOS   — `MeetingSpace-<ver>.dmg` + a `.zip`
 # All UNSIGNED (no paid certs): first launch needs the one-time SmartScreen "More info → Run anyway"
-# (Windows) / right-click → Open (macOS). See WINDOWS-/MACOS-PACKAGE-README.md.
+# (Windows) / right-click → Open (macOS). See INSTALL-WINDOWS.md / INSTALL-MACOS.md.
 #
 # Hardening note: the `uses:` actions below are pinned to major-version tags. For supply-chain
 # hardening (audit finding H-3) pin each to a full commit SHA before relying on this for public
