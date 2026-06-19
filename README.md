@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="build/icon.png" width="128" alt="MeetingSpace icon" />
+
 # MeetingSpace
 
 **A desktop note-taking app for meetings, with a Claude assistant built in.**
