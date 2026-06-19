@@ -53,6 +53,7 @@ The capture side — notes, screenshots, transcripts, search, autosave — works
 - **Where it's stored:** encrypted by your operating system (Windows DPAPI / macOS Keychain) and used only inside the app's background process — it's **never written to disk or logs in plaintext, and never leaves your machine** except as the API request you trigger.
 - **This is not a Claude.ai login.** It does **not** use a Claude Pro/Max web subscription — only a pay-per-use API key from the Anthropic Console.
 - **Add it any time:** there's a field on the first-run welcome screen, and in **Settings**. The app picks available Claude models automatically.
+- **The prompts are yours to edit.** The white-paper and minutes generation prompts ship with sensible defaults but are **fully editable** in the app — adjust the structure, sections, and tone to match how you work, and reset to the defaults whenever you like.
 
 > **Generating a document takes time — be patient.** A full white paper is built in stages and can take **10+ minutes** to finish. The app shows progress while it works; that's expected, so leave it running rather than assuming it stalled. (Chat replies stream back quickly; it's the long-form documents that take a while.)
 
