@@ -1,9 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+
+import { cleanupUserData } from './helpers/cleanup';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
 
@@ -34,7 +36,7 @@ test.beforeAll(() => {
 });
 
 test.afterAll(() => {
-  rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  cleanupUserData(userDataDir);
 });
 
 test('onboarding appears once on first run, seeds a sample space, and never returns', async () => {

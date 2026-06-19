@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page, Locator } from '@playwright/test';
 
+import { cleanupUserData } from './helpers/cleanup';
 import { paintStats } from './helpers/png';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
@@ -191,7 +192,7 @@ test.describe('generated-artifact iframe PAINT under churn (M06.E real blocker)'
       }
     } finally {
       await app.close();
-      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      cleanupUserData(dir);
     }
   });
 
@@ -235,7 +236,7 @@ test.describe('generated-artifact iframe PAINT under churn (M06.E real blocker)'
       }
     } finally {
       await app.close();
-      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      cleanupUserData(dir);
     }
   });
 
@@ -315,7 +316,7 @@ test.describe('generated-artifact iframe PAINT under churn (M06.E real blocker)'
       assertPainted(worst.fraction);
     } finally {
       await app.close();
-      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      cleanupUserData(dir);
     }
   });
 });

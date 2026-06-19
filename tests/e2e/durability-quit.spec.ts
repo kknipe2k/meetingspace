@@ -1,9 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+
+import { cleanupUserData } from './helpers/cleanup';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
 const NOTE_TEXT = 'epsilonword: committed before an abrupt kill must survive.';
@@ -38,7 +40,7 @@ test.afterAll(() => {
   // WAL/shm after termination (gotcha §10), so cleanup of this OS temp dir is not a proof
   // assertion — swallow a residual lock rather than fail the durability test on teardown.
   try {
-    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    cleanupUserData(userDataDir);
   } catch {
     /* OS reclaims the temp dir; the durability assertion already ran in the test body. */
   }
