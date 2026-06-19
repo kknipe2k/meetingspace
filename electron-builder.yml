@@ -1,0 +1,68 @@
+# electron-builder configuration (M05.C, ADR-0015). Packages the electron-vite `out/`
+# build into a Windows NSIS installer (primary target) and a macOS zip (smoke, built on
+# macOS only). electron-builder rebuilds the native better-sqlite3 addon to Electron's ABI
+# at pack time and unpacks it from the asar so the .node can load (gotcha §1). Pinned EXACT
+# (devDependencies) per Hard Rule §4.7.
+appId: com.meetingspace.app
+productName: MeetingSpace
+directories:
+  output: release
+  buildResources: build
+asar: true
+# A custom app icon (M06.E): electron-builder discovers build/icon.png (>=512x512) and converts
+# it to a Windows .ico and a macOS .icns automatically (web-verified 2026-06-16). The single
+# source lives at build/ (directories.buildResources), so no per-platform icon path is needed.
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+# Bundle a user-facing README into the app resources of every installer (M06.E). A copy should
+# also sit beside the downloads as a pre-install README.
+extraResources:
+  - from: build/README.txt
+    to: README.txt
+  # Ship the raw icon png so the RUNTIME BrowserWindow can set its window/taskbar icon (M06.E IRL
+  # fix). electron-builder's build/icon.png → .ico/.icns conversion brands only the binary; the live
+  # window resolves <resources>/build/icon.png (resolveAppIconPath, packaged branch). A wrong path
+  # silently falls back to the default Electron icon, so this MUST land where the seam looks.
+  - from: build/icon.png
+    to: build/icon.png
+files:
+  - out/**/*
+  - package.json
+  # The test-only sandbox-probe renderer entry (permissive CSP) must NOT ship. It shares its
+  # JS chunk with index.html, so excluding just the HTML drops the entry cleanly; the runtime
+  # gate (sandboxProbeEnabled → !app.isPackaged) already makes it unreachable, this removes it
+  # from the bundle entirely (defense in depth). Verified by `npm run verify:package`.
+  - '!out/renderer/probe.html'
+win:
+  # NSIS = the familiar single-exe installer (Start Menu + uninstaller); zip = the no-install
+  # portable folder. Both are no-npm downloads. Unsigned (no certs) — first run needs SmartScreen
+  # "More info → Run anyway".
+  target:
+    - nsis
+    - zip
+# macOS distributable (M06.E) + portability smoke (spec §1). dmg is the standard drag-to-
+# Applications installer; the zip is retained as the simplest "unzip → run" smoke (ADR-0015).
+# Both are built on macOS only — electron-builder cannot cross-build a .app from Windows, so the
+# DMG build + .zip boot smoke is an owed carry-forward (CI/Mac runner), recorded at closeout, not
+# owner-run. Unsigned in v1.1 — first launch needs right-click → Open; code-signing and
+# notarization remain deferred (ADR-0015 / ADR-0023).
+mac:
+  # Build BOTH Apple Silicon (arm64) and Intel (x64). Explicit dual-arch is more reliable with the
+  # native better-sqlite3 addon than a universal binary.
+  # Force the arch into EVERY artifact name — electron-builder OMITS it for x64 by default, leaving
+  # the Intel file unlabeled (e.g. MeetingSpace-1.1.0.dmg) and ambiguous. With this template Intel
+  # reads -x64 and Apple Silicon -arm64, so it's obvious which download is which.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+# Publish to a GitHub Release (used by .github/workflows/release.yml with --publish always).
+# The provider auto-targets the repo's releases; the tag/version drives the release name.
+publish:
+  provider: github

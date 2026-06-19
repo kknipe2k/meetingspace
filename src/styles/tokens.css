@@ -1,0 +1,145 @@
+/*
+ * Design tokens — the single source of color, type, spacing, radius, and
+ * elevation values for the renderer. Transcribed from docs/design.md §2–§6.
+ * Do not hard-code hex/px outside this file (design.md §7 "Don't").
+ *
+ * Spacing and type-scale tokens are unitless multipliers — consume them as
+ * `calc(var(--space-4) * 1rem)` / `calc(var(--text-base) * 1rem)`.
+ */
+:root {
+  /* Follow the OS appearance (M06.A; F5): opts native form controls, scrollbars, and the
+     default canvas into the dark UA palette when the dark token block below is active. */
+  color-scheme: light dark;
+  /* §2 Surfaces */
+  --color-bg: #fbfbfd;
+  --color-surface: #f4f5f7;
+  --color-surface-raised: #ffffff;
+  /* §2 Text */
+  --color-text: #0f0f14;
+  --color-text-muted: #6b6b76;
+  --color-text-subtle: #8a8f98;
+  /* §2 Brand / accent — Linear lavender, used sparingly */
+  --color-primary: #5e6ad2;
+  --color-primary-hover: #4f5ac0;
+  --color-primary-soft: #eceef9;
+  /* §2 Semantic */
+  --color-success: #27a644;
+  --color-warning: #c77700;
+  --color-danger: #dc2626;
+  --color-border: #e6e6ec;
+
+  /* §3 Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --text-xs: 0.8125;
+  --text-sm: 0.875;
+  --text-base: 1;
+  --text-lg: 1.125;
+  --text-xl: 1.375;
+  --text-2xl: 1.75;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.2;
+  --leading-body: 1.6;
+  --tracking-title: -0.02em;
+  --tracking-body: -0.005em;
+
+  /* §5 Spacing scale */
+  --space-1: 0.25;
+  --space-2: 0.5;
+  --space-3: 0.75;
+  --space-4: 1;
+  --space-6: 1.5;
+  --space-8: 2;
+  --space-12: 3;
+  /* §5 Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  /* §5 Structure */
+  --sidebar-width: 264px;
+  --llm-panel-width: 380px;
+  --content-max: 820px;
+
+  /* §6 Depth & elevation */
+  --shadow-sm: 0 1px 2px rgba(15, 15, 20, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 15, 20, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 15, 20, 0.12);
+  /* §4 modal scrim overlay — the same near-black ink as the elevation shadows */
+  --color-scrim: rgba(15, 15, 20, 0.4);
+}
+
+/*
+ * Dark mode (M06.A; REVIEW-V11 F5 + IRL fix). The appearance preference (System / Light / Dark)
+ * is applied by the renderer as `:root[data-theme=…]`:
+ *   - System (default, or no attr): follows the OS via `prefers-color-scheme` — the dark block
+ *     is scoped to `:not([data-theme='light']):not([data-theme='dark'])` so an explicit choice
+ *     opts out. System needs no JS to resolve, so there is no flash on load.
+ *   - Light: `[data-theme='light']` keeps the base (light) :root tokens regardless of the OS.
+ *   - Dark: `[data-theme='dark']` forces the dark palette regardless of the OS.
+ * Only token values change; every component already consumes the tokens (design.md §7), so the
+ * whole app shell re-themes for free. The lavender accent is brightened for contrast on dark.
+ * The generated-doc iframe and the self-contained HTML export carry their OWN (light) CSS and
+ * are deliberately unaffected — generated-doc/export theming is a separate decision (light).
+ *
+ * The two dark blocks below carry IDENTICAL token values (system-via-OS and explicit-dark) —
+ * keep them in sync. (Plain CSS can't share a custom-property set across a media-scoped and an
+ * unscoped selector without re-declaring it.)
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    /* §2 Surfaces */
+    --color-bg: #1b1b1f;
+    --color-surface: #232329;
+    --color-surface-raised: #2a2a31;
+    /* §2 Text */
+    --color-text: #ececf1;
+    --color-text-muted: #a1a1ad;
+    --color-text-subtle: #7c7c88;
+    /* §2 Brand / accent — lavender brightened for dark surfaces */
+    --color-primary: #7c87e8;
+    --color-primary-hover: #8d98f0;
+    --color-primary-soft: #2b2d40;
+    /* §2 Semantic */
+    --color-success: #3ecf5c;
+    --color-warning: #e0962e;
+    --color-danger: #f2655a;
+    --color-border: #34343d;
+
+    /* §6 Depth & elevation — deeper ink against the dark canvas */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+    /* §4 modal scrim overlay */
+    --color-scrim: rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  /* §2 Surfaces */
+  --color-bg: #1b1b1f;
+  --color-surface: #232329;
+  --color-surface-raised: #2a2a31;
+  /* §2 Text */
+  --color-text: #ececf1;
+  --color-text-muted: #a1a1ad;
+  --color-text-subtle: #7c7c88;
+  /* §2 Brand / accent — lavender brightened for dark surfaces */
+  --color-primary: #7c87e8;
+  --color-primary-hover: #8d98f0;
+  --color-primary-soft: #2b2d40;
+  /* §2 Semantic */
+  --color-success: #3ecf5c;
+  --color-warning: #e0962e;
+  --color-danger: #f2655a;
+  --color-border: #34343d;
+
+  /* §6 Depth & elevation — deeper ink against the dark canvas */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+  /* §4 modal scrim overlay */
+  --color-scrim: rgba(0, 0, 0, 0.6);
+}

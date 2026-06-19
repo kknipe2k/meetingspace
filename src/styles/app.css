@@ -1,0 +1,1569 @@
+/*
+ * Three-zone shell layout (design.md §5). Every value derives from a token in
+ * tokens.css — no raw hex or px literals here (design.md §7).
+ */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-base) * 1rem);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr var(--llm-panel-width);
+  height: 100%;
+}
+
+/* Drag handle on the sidebar's right edge (M06.B IRL request) — resize the left column. Sits over
+   the column boundary; widens its hit area on hover/focus. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  transform: translateX(-4px);
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible {
+  background: var(--color-primary-soft);
+  outline: none;
+}
+
+.zone {
+  height: 100%;
+  overflow: auto;
+  padding: calc(var(--space-6) * 1rem);
+}
+
+.zone-sidebar {
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+
+.zone-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--color-bg);
+}
+
+.zone-canvas > * {
+  width: 100%;
+  max-width: var(--content-max);
+}
+
+.zone-llm-panel {
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  /* Column layout so the message list scrolls and the composer pins to the bottom
+     (the chat area scrolls, not the whole zone). */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.zone-heading {
+  margin: 0 0 calc(var(--space-4) * 1rem);
+  font-size: calc(var(--text-sm) * 1rem);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.zone-placeholder {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.zone-canvas .zone-placeholder {
+  margin-top: calc(var(--space-12) * 1rem);
+  text-align: center;
+  color: var(--color-text-subtle);
+}
+
+/* Buttons (design.md §4). One lavender accent; visible focus rings everywhere. */
+.btn {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-sm) * 1rem);
+  font-weight: var(--weight-medium);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-surface-raised);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+/* Secondary button (design.md §4): surface-raised fill, hairline border, text
+   color; hover fills with the recessed surface. Used for the "Add note" action. */
+.btn-secondary {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-secondary:hover {
+  background: var(--color-surface);
+}
+
+.btn:focus-visible,
+.nav-item:focus-visible,
+.btn-icon:focus-visible,
+.rename-input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Sidebar header + session list */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: calc(var(--space-2) * 1rem);
+  margin-bottom: calc(var(--space-4) * 1rem);
+}
+
+.sidebar-header .zone-heading {
+  margin: 0;
+}
+
+.sidebar-new {
+  white-space: nowrap;
+}
+
+/* M06.B selection-mode toggle — compact so it sits beside "New session" without crowding. */
+.sidebar-select-toggle {
+  white-space: nowrap;
+  font-size: calc(var(--text-xs) * 1rem);
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+}
+
+.session-list-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+/* Nav item (design.md §4): transparent default, surface hover, selected gets the
+   lavender-soft fill + a left accent bar. */
+.nav-item {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+  font-family: inherit;
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item:hover {
+  background: var(--color-surface-raised);
+}
+
+.nav-item--selected {
+  background: var(--color-primary-soft);
+}
+
+.nav-item--selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(var(--space-1) * 1rem);
+  bottom: calc(var(--space-1) * 1rem);
+  width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+}
+
+.nav-item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: calc(var(--space-1) * 1rem);
+}
+
+.btn-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-2) * 1rem);
+  font-family: inherit;
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.btn-icon:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.btn-danger:hover {
+  color: var(--color-danger);
+}
+
+.rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.confirm-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Open-session canvas (design.md §5: left-aligned, capped content column) */
+.canvas-session {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--content-max);
+  height: 100%;
+  text-align: left;
+}
+
+.canvas-title {
+  margin: 0 0 calc(var(--space-4) * 1rem);
+  font-size: calc(var(--text-2xl) * 1rem);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-title);
+  color: var(--color-text);
+}
+
+/* Note blocks (design.md §4 card: surface-raised, 1px border, radius-lg,
+   shadow-sm; shadow-md while draggable). An ordered column of blocks with an
+   "Add note" affordance below. Notes are body text — sans + text-base + body
+   leading; mono is reserved for transcripts. */
+.note-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+}
+
+.note-block {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: calc(var(--space-4) * 1rem);
+}
+
+.note-block:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.note-block-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.note-block-handle {
+  cursor: grab;
+  line-height: 1;
+}
+
+.note-block-confirm {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.note-block-text {
+  width: 100%;
+  min-height: calc(var(--space-12) * 2 * 1rem);
+  resize: vertical;
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-base) * 1rem);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-3) * 1rem);
+}
+
+.note-block-text::placeholder {
+  color: var(--color-text-subtle);
+}
+
+.note-block-text:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.note-blocks-actions {
+  display: flex;
+  gap: calc(var(--space-2) * 1rem);
+  align-self: flex-start;
+}
+
+.note-blocks-upload {
+  display: inline-flex;
+  align-items: center;
+}
+
+.note-blocks-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Screenshots (design.md §4 screenshot-thumb + §5 spacing). A capture drop zone
+   above a thumbnail grid. All values from tokens.css — no raw hex/px. */
+.screenshots {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+  margin-top: calc(var(--space-6) * 1rem);
+}
+
+.screenshot-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.screenshot-drop-hint {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.screenshot-drop-upload {
+  display: inline-flex;
+  align-items: center;
+}
+
+.screenshot-drop-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+}
+
+.screenshot-thumb {
+  position: relative;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.screenshot-thumb:hover {
+  transform: scale(1.01);
+  box-shadow: var(--shadow-md);
+}
+
+/* The expand affordance wrapping the image: a full-bleed button reset so the
+   whole thumbnail is clickable to open the lightbox, while the delete control
+   stays a separate sibling on top (the delete-vs-expand guard). */
+.screenshot-thumb-view {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.screenshot-thumb-view:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.screenshot-thumb-img {
+  display: block;
+  width: 100%;
+  height: calc(var(--space-12) * 3 * 1rem);
+  object-fit: cover;
+}
+
+.screenshot-thumb-delete {
+  position: absolute;
+  top: calc(var(--space-2) * 1rem);
+  right: calc(var(--space-2) * 1rem);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  opacity: 0;
+}
+
+.screenshot-thumb:hover .screenshot-thumb-delete,
+.screenshot-thumb-delete:focus-visible {
+  opacity: 1;
+}
+
+/* In-app screen capture (M02.C). The "Capture screen" affordance sits with the
+   drop zone; the picker is a modal (design.md §4: scrim, shadow-lg, focus trap)
+   over a preview grid. Tokens only — no raw hex/px. */
+.screenshots-capture {
+  align-self: flex-start;
+}
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-scrim);
+  z-index: 10;
+}
+
+.capture-modal {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+  max-width: var(--content-max);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.capture-modal-title {
+  margin: 0;
+  font-size: calc(var(--text-xl) * 1rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.capture-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: calc(var(--space-4) * 1rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.capture-source {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+  width: 100%;
+  padding: calc(var(--space-2) * 1rem);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: calc(var(--text-sm) * 1rem);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.capture-source:hover {
+  transform: scale(1.01);
+  box-shadow: var(--shadow-md);
+}
+
+.capture-source:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.capture-source-preview {
+  display: block;
+  width: 100%;
+  height: calc(var(--space-12) * 2 * 1rem);
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.capture-source-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.capture-permission-error {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.capture-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Screenshot lightbox (M02.D; design.md §4 modal: scrim, shadow-lg, focus trap).
+   Reuses .modal-scrim; the image sits centered and full-size, capped to the
+   viewport so a large capture never overflows. Tokens only. */
+.lightbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 92vw;
+  max-height: 92vh;
+  outline: none;
+}
+
+.lightbox-img {
+  display: block;
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  cursor: default;
+}
+
+/* Assistant panel header — title + settings gear (M03.A). */
+.zone-llm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--space-3) * 1rem);
+}
+
+/* Settings modal (M03.A; design.md §4 modal: scrim, shadow-lg, real focus trap).
+   Reuses .modal-scrim; the dialog is a calm, single-column form. Tokens only. */
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+  max-width: 32rem;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: calc(var(--text-xl) * 1rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.settings-subheading {
+  margin: 0;
+  font-size: calc(var(--text-lg) * 1rem);
+  font-weight: var(--weight-medium);
+}
+
+.settings-help {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
+.settings-error {
+  margin: 0;
+  padding: calc(var(--space-3) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
+.settings-key-status {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.settings-field-label {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+
+/* The API key is a mono field (design.md §3: mono for transcripts, code, the key
+   field). type=password masks it; it is never seeded with the stored key. */
+.settings-key-input {
+  font-family: var(--font-mono);
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+}
+
+.settings-key-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.settings-actions {
+  display: flex;
+  gap: calc(var(--space-3) * 1rem);
+  margin-top: calc(var(--space-2) * 1rem);
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* First-run onboarding (M06.E) — reuses the settings-section/field styles inside a calm,
+   single-column welcome card. Slightly wider than settings so the lead paragraph breathes. */
+.onboarding-modal {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 100%;
+  max-width: 34rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.onboarding-title {
+  margin: 0;
+  font-size: calc(var(--text-xl) * 1rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.onboarding-lead {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.onboarding-disclosure {
+  margin: 0;
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.onboarding-actions {
+  margin-top: calc(var(--space-2) * 1rem);
+}
+
+/* Session-grounded chat (M03.C; design.md: calm, content-first, one lavender accent).
+   The panel fills the LLM zone below the header; messages scroll, composer pins. */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: calc(var(--space-4) * 1rem);
+}
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-3) * 1rem);
+}
+
+.chat-empty {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+/* Chat bubbles: assistant on a raised hairline card, user tinted with the one
+   accent (design.md §2 --color-primary-soft). No second accent, no heavy shadow. */
+.chat-message {
+  max-width: 90%;
+  padding: calc(var(--space-3) * 1rem) calc(var(--space-4) * 1rem);
+  border-radius: var(--radius-lg);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message-assistant {
+  align-self: flex-start;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+.chat-message-user {
+  align-self: flex-end;
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+}
+
+.chat-error {
+  margin: 0;
+  padding: calc(var(--space-3) * 1rem) calc(var(--space-4) * 1rem);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.chat-composer {
+  display: flex;
+  gap: calc(var(--space-3) * 1rem);
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  resize: none;
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+}
+
+.chat-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.chat-input:disabled {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.chat-send {
+  flex-shrink: 0;
+}
+
+/* Model picker (M03.D, ADR-0008): a quiet labelled select above the transcript.
+   No second accent; the select inherits the input focus ring. */
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.chat-model-label {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+
+.chat-model-select {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-2) * 1rem);
+}
+
+.chat-model-select:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* Passive usage counter (M06.D, ADR-0021): a compact two-row, label-aligned readout under the
+   composer. The label column is auto-width and the value column takes the rest; `display: contents`
+   on the row lets each row's label + value participate in the shared grid so the two rows align.
+   Muted + small so it sits quietly; tabular numerals + no-wrap so abbreviated counts line up. */
+.chat-usage {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: calc(var(--space-3) * 1rem);
+  row-gap: calc(var(--space-1) * 1rem);
+  margin: calc(var(--space-2) * 1rem) 0 0;
+  padding-top: calc(var(--space-2) * 1rem);
+  border-top: 1px solid var(--color-border);
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text-muted);
+}
+
+.chat-usage-row {
+  display: contents;
+}
+
+.chat-usage-label {
+  font-weight: var(--weight-medium);
+}
+
+.chat-usage-value {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chat-message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Reply footer: which model answered + the save action (M03.D). Muted, one line. */
+.chat-message-meta {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-3) * 1rem);
+  margin-top: calc(var(--space-2) * 1rem);
+}
+
+.chat-model-badge {
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text-subtle);
+}
+
+/* When the badge row hosts the save button, drop its own top margin (the row owns it). */
+.chat-message-meta .chat-save {
+  margin-top: 0;
+}
+
+/* Save-reply-as-note (M03.D): a quiet ghost action under a finalized reply; turns
+   into a muted confirmation once saved (disabled, no second save). */
+.chat-save {
+  align-self: flex-start;
+  margin-top: calc(var(--space-2) * 1rem);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.chat-save:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.chat-save:disabled {
+  color: var(--color-text-subtle);
+  cursor: default;
+}
+
+/* Error banner now carries a per-code affordance (Open Settings / Retry). */
+.chat-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.chat-error-message {
+  margin: 0;
+}
+
+.chat-error-action {
+  align-self: flex-start;
+}
+
+/* Token-spend guidance (M03.D soft gate): advisory, dated price snapshot. */
+.settings-pricing {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+}
+
+.settings-pricing-row {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(var(--space-4) * 1rem);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.settings-pricing-model {
+  color: var(--color-text);
+}
+
+.settings-pricing-rate {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-pricing-note {
+  margin-top: calc(var(--space-1) * 1rem);
+}
+
+/* Storage meter (M06.B / F28). The per-session breakdown is collapsible and scroll-bounded so a
+   store with many sessions never blows up the Settings modal. */
+.storage-meter-details > summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.storage-meter-list {
+  margin: calc(var(--space-2) * 1rem) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.storage-meter-row {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(var(--space-4) * 1rem);
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.storage-meter-bytes {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Generated-document surface (M04.B; design.md §4 modal + §5 readable width).
+   The white paper renders in a wide modal — a 380px panel is too narrow to read or
+   to judge the design-conformance baseline. The document itself renders inside a
+   sandboxed iframe (.generated-doc-frame) on a white surface; tokens only. */
+.zone-llm-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.llm-whitepaper-btn {
+  font-size: calc(var(--text-sm) * 1rem);
+}
+
+.generated-doc-modal {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  width: 92vw;
+  max-width: 70rem;
+  height: 88vh;
+  padding: calc(var(--space-6) * 1rem);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.generated-doc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--space-4) * 1rem);
+}
+
+.generated-doc-title {
+  margin: 0;
+  font-size: calc(var(--text-xl) * 1rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-title);
+}
+
+.generated-doc {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-4) * 1rem);
+  flex: 1;
+  min-height: 0;
+}
+
+.generated-doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-3) * 1rem);
+}
+
+.generated-doc-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.generated-doc-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--space-3) * 1rem);
+  margin: 0;
+  padding: calc(var(--space-3) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
+.generated-doc-error-message {
+  min-width: 0;
+}
+
+.generated-doc-error-action {
+  flex: none;
+}
+
+/* Soft "taking a while" hint (M04.C cycle 2) — muted, not an error. */
+.generated-doc-slow,
+.chat-slow {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
+.generated-doc-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
+/* Generation toolbar chrome (M04.C; design.md §2/§4/§7 — tokens only, ONE lavender
+   accent on the active mode + primary action + model badge, neutral hairline borders
+   everywhere else). The toolbar wraps: it carries modes + model + prompt + actions. */
+.generated-doc-toolbar {
+  flex-wrap: wrap;
+  row-gap: calc(var(--space-2) * 1rem);
+}
+
+/* Mode switch — segmented pills. Inactive: quiet ghost; active: the single accent. */
+.generated-doc-modes {
+  display: inline-flex;
+  gap: calc(var(--space-1) * 1rem);
+  padding: calc(var(--space-1) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.btn-mode {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-sm) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-3) * 1rem);
+  cursor: pointer;
+}
+
+.btn-mode:hover:not(:disabled) {
+  color: var(--color-text);
+}
+
+.btn-mode.is-active {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-soft);
+}
+
+.btn-mode:disabled,
+.generated-doc-toolbar .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Generation model picker — mirrors the chat picker (neutral surface + hairline). */
+.model-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.model-picker-label {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+
+.model-picker-select {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-2) * 1rem);
+}
+
+.model-picker-select:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* "Which model ran" badge — the accent in its softest, smallest form. */
+.generated-doc-meta {
+  display: flex;
+}
+
+.generated-doc-badge {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-2) * 1rem);
+}
+
+/* Regenerate-vs-Start-over caption — quiet, muted, one line. */
+.generated-doc-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-xs) * 1rem);
+  line-height: var(--leading-body);
+}
+
+/* App-level toast system (M07.B) — a FIXED, top-most stack so run status floats over every
+   surface (modals included) and is NEVER occluded by the full-height app shell. (The IRL
+   regression: without fixed positioning the portal sat in body flow behind .app-shell —
+   present in the DOM, so jsdom + Playwright's toBeVisible both passed, but invisible to a
+   human.) The host never intercepts clicks; individual toasts opt pointer events back in. */
+.toast-host {
+  position: fixed;
+  /* Centered over the middle column, bottom-anchored (IRL request: center, not the right edge). */
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--space-4) * 1rem);
+  z-index: 100;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+  max-width: min(28rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+/* Nearly-transparent box with a light outline; the WORDS stay fully opaque + a blur keeps them
+   readable over content (IRL request). */
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(3px);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+}
+
+.toast--error {
+  border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
+}
+
+.toast-message {
+  flex: 1 1 auto;
+  /* Keep the text crisp/opaque even though the box behind it is translucent. */
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.toast-action,
+.toast-dismiss {
+  flex: 0 0 auto;
+}
+
+/* In-modal streaming hint (M07.B) — live progress + Cancel live in the app-level run toast. */
+.generated-doc-progress {
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text-muted);
+}
+
+/* Prompt-template editor — a recessed card; the prompt bodies in mono for editing. */
+.prompt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+  padding: calc(var(--space-4) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.prompt-editor-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.prompt-editor-label {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+
+.prompt-editor-text {
+  font-family: var(--font-mono);
+  font-size: calc(var(--text-xs) * 1rem);
+  line-height: var(--leading-body);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem);
+  resize: vertical;
+}
+
+.prompt-editor-text:focus-visible,
+.prompt-editor-row input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.prompt-editor-row input {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-1) * 1rem) calc(var(--space-2) * 1rem);
+}
+
+/* Export actions (M04.D) — neutral secondary buttons; the accent stays reserved for
+   the active mode / primary action / badge (design.md §4, one accent). */
+.generated-doc-export {
+  display: flex;
+  gap: calc(var(--space-2) * 1rem);
+  margin-left: auto;
+}
+
+/* Cross-session search (M04.D) — sits at the top of the sessions column. The input is
+   the only accent here (focus ring); results are quiet surface cards, hover lifts to the
+   raised surface (the same nav-item idiom). */
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+  margin-bottom: calc(var(--space-4) * 1rem);
+}
+
+.search-input {
+  font-family: var(--font-sans);
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+}
+
+.search-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: calc(var(--space-2) * 1rem) calc(var(--space-3) * 1rem);
+}
+
+.search-result:hover {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+.search-result-name {
+  font-size: calc(var(--text-sm) * 1rem);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.search-result-snippet {
+  font-size: calc(var(--text-xs) * 1rem);
+  line-height: var(--leading-body);
+  color: var(--color-text-muted);
+}
+
+.search-empty {
+  margin: 0;
+  font-size: calc(var(--text-xs) * 1rem);
+  color: var(--color-text-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   M05.A — empty / loading / error states + responsive panel-collapse (TD-003).
+   Tokens only; one lavender accent (on the empty-state primary action). Spec:
+   docs/design-specs/M05A-states.md.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* EmptyState — calm, centered "what to do" (design.md §5 centering rule). */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: calc(var(--space-3) * 1rem);
+  padding: calc(var(--space-8) * 1rem) calc(var(--space-4) * 1rem);
+}
+
+.empty-state-icon {
+  color: var(--color-text-subtle);
+}
+
+.empty-state-headline {
+  margin: 0;
+  font-size: calc(var(--text-lg) * 1rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-body);
+  color: var(--color-text);
+}
+
+.empty-state-hint {
+  margin: 0;
+  max-width: 40ch;
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+  color: var(--color-text-muted);
+}
+
+.empty-state-action {
+  margin-top: calc(var(--space-2) * 1rem);
+}
+
+/* Sidebar variants are compact + left-aligned (the narrow column). */
+.empty-state.sidebar-empty {
+  align-items: flex-start;
+  text-align: left;
+  padding: calc(var(--space-6) * 1rem) 0;
+}
+
+/* ErrorState — hairline danger affordance (matches .chat-error). */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--space-3) * 1rem);
+  margin: calc(var(--space-3) * 1rem) 0;
+  padding: calc(var(--space-3) * 1rem) calc(var(--space-4) * 1rem);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+}
+
+.error-state-message {
+  margin: 0;
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+  color: var(--color-danger);
+}
+
+/* Loading affordance — a calm line, never a spinner that implies a hang (D-01 lesson). */
+.zone-loading {
+  margin: calc(var(--space-3) * 1rem) 0;
+  font-size: calc(var(--text-sm) * 1rem);
+  color: var(--color-text-subtle);
+}
+
+.search-loading {
+  margin: calc(var(--space-2) * 1rem) 0 0;
+  font-size: calc(var(--text-xs) * 1rem);
+}
+
+/* Responsive panel-collapse (TD-003 / design.md §8): the toggle is hidden until the
+   assistant panel collapses to a drawer below ~960px. */
+.assistant-toggle {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  /* Drop the right column from the grid; the assistant panel becomes an overlay. */
+  .app-shell {
+    grid-template-columns: var(--sidebar-width) 1fr;
+  }
+
+  .assistant-toggle {
+    display: inline-flex;
+    align-items: center;
+    position: fixed;
+    top: calc(var(--space-4) * 1rem);
+    right: calc(var(--space-4) * 1rem);
+    z-index: 60;
+    font-family: var(--font-sans);
+    font-size: calc(var(--text-sm) * 1rem);
+    font-weight: var(--weight-medium);
+    padding: calc(var(--space-2) * 1rem) calc(var(--space-4) * 1rem);
+    color: var(--color-surface-raised);
+    background: var(--color-primary);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+  }
+
+  .assistant-toggle:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* The assistant panel slides in as a right-edge drawer; closed = hidden + off-canvas
+     (visibility:hidden so it's truly not visible/tabbable, not just translated away). */
+  .zone-llm-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(var(--llm-panel-width), 90vw);
+    z-index: 55;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+      transform 160ms ease,
+      visibility 160ms ease;
+  }
+
+  .zone-llm-panel[data-drawer='open'] {
+    transform: translateX(0);
+    visibility: visible;
+  }
+}
