@@ -1,9 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+
+import { cleanupUserData } from './helpers/cleanup';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
 
@@ -38,9 +40,7 @@ test.beforeAll(() => {
 });
 
 test.afterAll(() => {
-  // Windows can briefly hold the SQLite file after the app closes — retry the
-  // cleanup rather than failing the run on an EBUSY unlink race.
-  rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  cleanupUserData(userDataDir);
 });
 
 test('capture canvas with note blocks matches the approved visual baseline', async () => {
@@ -112,7 +112,7 @@ test('generated white-paper surface matches the approved visual baseline', async
     await expect(win.locator('.generated-doc-modal')).toHaveScreenshot('generated-doc.png');
   } finally {
     await app.close();
-    rmSync(genUserDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    cleanupUserData(genUserDataDir);
   }
 });
 
@@ -155,7 +155,7 @@ test('open Lightbox matches the approved visual baseline (TD-008)', async () => 
     await expect(win.getByTestId('lightbox-scrim')).toHaveScreenshot('lightbox-open.png');
   } finally {
     await app.close();
-    rmSync(lbDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    cleanupUserData(lbDir);
   }
 });
 
@@ -192,6 +192,6 @@ test('open CapturePicker grid matches the approved visual baseline (TD-008)', as
     await expect(dialog).toHaveScreenshot('capture-picker-open.png');
   } finally {
     await app.close();
-    rmSync(cpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    cleanupUserData(cpDir);
   }
 });

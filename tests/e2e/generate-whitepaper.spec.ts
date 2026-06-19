@@ -1,9 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+
+import { cleanupUserData } from './helpers/cleanup';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
 
@@ -65,7 +67,7 @@ test.describe('white paper generation — integrated pipeline', () => {
 
   test.afterAll(async () => {
     await app.close();
-    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    cleanupUserData(userDataDir);
   });
 
   test('a planted <script> is sanitized out and never executes; renders sandboxed', async () => {
@@ -159,7 +161,7 @@ test.describe('sandbox behavioral proof — raw unsanitized HTML', () => {
 
   test.afterAll(async () => {
     await app.close();
-    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    cleanupUserData(userDataDir);
   });
 
   test('a script in RAW HTML rendered through the sandboxed frame does not execute', async () => {

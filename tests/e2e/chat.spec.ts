@@ -1,9 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+
+import { cleanupUserData } from './helpers/cleanup';
 
 const MAIN_ENTRY = resolve(__dirname, '../../out/main/main.js');
 
@@ -44,7 +46,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close();
-  rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  cleanupUserData(userDataDir);
 });
 
 test('chat streams a grounded answer into the panel (mocked SDK, no live network)', async () => {
