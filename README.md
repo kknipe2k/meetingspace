@@ -6,8 +6,7 @@ Local-first and single-user: your data stays on **your** machine. Windows and ma
 
 > **Status:** v1.1 — released. Free and open-source (MIT). Built with Claude.
 
-<!-- TODO: add a screenshot or short demo GIF here — it's the first thing a new visitor looks for. -->
-<!-- ![MeetingSpace](docs/screenshot.png) -->
+![MeetingSpace — the capture canvas, with the sessions list on the left and the Claude assistant panel on the right](docs/screenshot.png)
 
 ---
 
@@ -32,6 +31,16 @@ There's also an in-app **chat** with Claude that's grounded in the current space
 - **Not** a live audio recorder or speech-to-text — transcripts come in as text you paste or upload.
 - **Not** cloud sync or real-time collaboration — it's local-first and single-user.
 - **Not** a mobile app.
+
+---
+
+## Example output
+
+Generated documents are fully formatted — headings, styled tables, callout illustrations, your screenshots inline — and export to a self-contained HTML file or PDF:
+
+| | |
+|---|---|
+| ![White paper — a styled section with a multi-column table](docs/whitepaper-1.png) | ![White paper — a section with callout cards](docs/whitepaper-2.png) |
 
 ---
 
