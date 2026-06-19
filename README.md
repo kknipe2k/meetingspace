@@ -1,10 +1,18 @@
+<div align="center">
+
 # MeetingSpace
 
-A **desktop note-taking app for meetings**, with a Claude assistant built in. Capture everything during a meeting — typed notes, screenshots, and transcripts — and let Claude turn it into a polished white paper, structured minutes, or searchable notes.
+**A desktop note-taking app for meetings, with a Claude assistant built in.**
 
-Local-first and single-user: your data stays on **your** machine. Windows and macOS.
+Capture notes, screenshots, and transcripts — then turn them into white papers, minutes, or searchable notes.
 
-> **Status:** v1.1 — released. Free and open-source (MIT). Built with Claude.
+Local-first · single-user · Windows & macOS · your data stays on your machine
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg) ![Release](https://img.shields.io/badge/release-v1.1.0-success.svg) ![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757.svg)
+
+**[Download](#download--run)** · [Windows guide](INSTALL-WINDOWS.md) · [macOS guide](INSTALL-MACOS.md) · [What it does](#what-it-does) · [Privacy](#your-data--privacy)
+
+</div>
 
 ![MeetingSpace — the capture canvas, with the sessions list on the left and the Claude assistant panel on the right](docs/screenshot.png)
 

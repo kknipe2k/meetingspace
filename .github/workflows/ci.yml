@@ -1,8 +1,8 @@
 name: ci
 
-# Mirrors the local hard-gate set (docs/gates.md M02 + cross-milestone) so the
-# "CI mirrors the local gate set" promise is enforced, not just husky-local.
-# No gate is omitted; no --no-verify. Closes M01 carry-forward Finding 1.
+# Runs the full quality-gate set (typecheck, lint, format, build, unit/component
+# tests, coverage, security, e2e) on every push and pull request — the same set
+# enforced locally. No gate is omitted; no --no-verify.
 
 on:
   push:
