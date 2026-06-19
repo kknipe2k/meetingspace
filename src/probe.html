@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      TEST-ONLY entry (M04.B sandbox probe). It deliberately relaxes script-src to
+      'unsafe-inline' so the inherited-CSP layer is removed as a confound and the
+      sandboxed-iframe attribute becomes the SOLE control under test (see
+      tests/e2e/generate-whitepaper.spec.ts). main.ts loads this page only when
+      sandboxProbeEnabled() is true (flag set AND build unpackaged), so it is
+      structurally unreachable in a shipped build. NEVER the production entry —
+      index.html (strict script-src 'self') is, and tests/security/csp-layer.test.ts
+      locks that.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; script-src 'self' 'unsafe-inline'"
+    />
+    <title>MeetingSpace — sandbox probe (test only)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

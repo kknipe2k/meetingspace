@@ -1,0 +1,52 @@
+# Framework-managed transient state — uncommitted by design.
+# The build session's in-flight checkpoint log (see STAGE-PROMPT-PROTOCOL
+# <status_log>). Read by an orchestrator consultation; cleared at stage close.
+.claude/build-status.md
+
+# The session's current mode (work / verifier / orchestrator). Local to the
+# machine; not part of the project's shared state.
+.claude/active-mode
+
+# Local Claude Code settings (machine-specific, not shared project state)
+.claude/settings.local.json
+
+# ----- Node / Electron / Vite (MeetingSpace stack) -----
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+# electron-builder buildResources is an INPUT dir (M06.E: build/icon.png, build/README.txt are
+# committed source for the app icon + bundled README). Ignore only stray contents, keep the inputs.
+/build/*
+!/build/icon.png
+!/build/README.txt
+.vite/
+*.log
+npm-debug.log*
+
+# Test / coverage artifacts
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+# Playwright visual baselines ARE committed (do not ignore *-snapshots/)
+
+# Native build artifacts (better-sqlite3 etc.)
+*.node
+prebuilds/
+
+# Local env / secrets — never commit (the API key lives in OS keychain, not files)
+.env
+.env.*
+!.env.example
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Local distribution bundle (regenerate with `git archive`)
+/meetingspace-source.zip
+/meetingspace-macos.zip

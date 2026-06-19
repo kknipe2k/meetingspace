@@ -1,0 +1,82 @@
+name: ci
+
+# Mirrors the local hard-gate set (docs/gates.md M02 + cross-milestone) so the
+# "CI mirrors the local gate set" promise is enforced, not just husky-local.
+# No gate is omitted; no --no-verify. Closes M01 carry-forward Finding 1.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gates:
+    # Node-ABI-at-rest job (ADR-0003): npm ci leaves better-sqlite3 at the Node
+    # ABI, so the unit/coverage/storage gates pass without an Electron rebuild.
+    runs-on: ubuntu-latest
+    # gitleaks-action GETs /pulls/{n}/commits (pull-requests) and may comment on a
+    # leak; the default GITHUB_TOKEN is contents:read-only, so PR scans 403 without
+    # this. Scoped to this job so the e2e job's token is unaffected.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the gitleaks secret scan
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+      - name: Key-never-plaintext (security)
+        run: npm run test:security
+      - name: Coverage (workspace ≥80%)
+        run: npm run coverage
+      - name: Coverage (safety primitives ≥95%)
+        run: npm run coverage:primitives
+      - name: Dependency audit (production deps)
+        run: npm run audit
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # gitleaks-action@v2 requires GITHUB_TOKEN to scan pull_request events
+          # (it calls the GitHub API to read PR commits / comment). Push events run
+          # without it, which is why this gate only tripped on PR #2. The auto-
+          # provisioned token suffices — no GITLEAKS_LICENSE (user-account repo).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  e2e:
+    # Electron-ABI job on the primary target (Windows). Playwright-on-Electron is
+    # reliable on windows-latest; ubuntu-latest needs xvfb and hits launch bugs
+    # (web-verified M02.A — playwright#12139 / #30154). npm run e2e rebuilds
+    # better-sqlite3 for Electron, builds, then runs Playwright.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: E2E (Playwright-on-Electron + visual regression)
+        run: npm run e2e
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

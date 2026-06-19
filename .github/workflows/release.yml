@@ -1,0 +1,57 @@
+# Build the desktop app for Windows + macOS and publish the installers to a GitHub Release.
+#
+# Trigger: push a version tag (e.g. `git tag v1.1.0 && git push origin v1.1.0`), or run manually
+# from the Actions tab (workflow_dispatch). Each OS builds on its own native runner — the only way
+# to produce a macOS `.app` (electron-builder can't cross-build it) and it sidesteps the Windows
+# symlink-privilege issue that blocks NSIS on an unprivileged local machine.
+#
+# Output (attached to the Release named after the tag):
+#   Windows — `MeetingSpace Setup <ver>.exe` (NSIS installer) + a portable `.zip`
+#   macOS   — `MeetingSpace-<ver>.dmg` + a `.zip`
+# All UNSIGNED (no paid certs): first launch needs the one-time SmartScreen "More info → Run anyway"
+# (Windows) / right-click → Open (macOS). See WINDOWS-/MACOS-PACKAGE-README.md.
+#
+# Hardening note: the `uses:` actions below are pinned to major-version tags. For supply-chain
+# hardening (audit finding H-3) pin each to a full commit SHA before relying on this for public
+# distribution.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # required to create/update the GitHub Release
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false # a macOS failure must not abort the Windows artifacts (and vice-versa)
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer/main bundle
+        run: npm run build
+
+      - name: Package & publish to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # electron-builder reads this to upload assets
+        run: npx electron-builder --${{ matrix.platform }} --config electron-builder.yml --publish always

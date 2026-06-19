@@ -1,0 +1,24 @@
+out
+dist
+dist-electron
+node_modules
+coverage
+playwright-report
+test-results
+*.md
+
+# Framework-managed scaffolding — formatted by the kit, not the app gate
+# (Hard Rule §4.9). The app surface is TypeScript/ESM under electron/, src/,
+# shared/, tests/ plus the root config files.
+*.cjs
+/*.html
+.claude
+templates
+validators
+scripts
+examples
+package-lock.json
+
+# Generated font data (M04.C, ADR-0013) — base64 woff2 emitted by
+# scripts/generate-font-data.cjs; regenerated, not hand-edited.
+shared/fonts/font-data.ts
