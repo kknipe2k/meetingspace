@@ -100,6 +100,14 @@ function harness(opts: HarnessOpts = {}): Harness {
         whitepaperPrompt: '',
         isDefault: false,
       }),
+    updateTemplate: () =>
+      Promise.resolve({
+        id: 't',
+        name: 'n',
+        focusPrompt: '',
+        whitepaperPrompt: '',
+        isDefault: false,
+      }),
     getTemplate: () => Promise.resolve(null),
     deleteTemplate: () => Promise.resolve(),
   };

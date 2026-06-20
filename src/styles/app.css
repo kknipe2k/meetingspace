@@ -1086,6 +1086,11 @@ body {
   gap: calc(var(--space-4) * 1rem);
   flex: 1;
   min-height: 0;
+  /* The whole modal body scrolls: with the editor open above a generated artifact, the
+     stack (toolbar + editor + meta + doc frame) exceeds the fixed-height modal. A single
+     scroll here keeps EVERYTHING reachable — the prompt fields AND the artifact below. The
+     frame keeps a real min-height (below) so it never collapses out of reach. */
+  overflow-y: auto;
 }
 
 .generated-doc-toolbar {
@@ -1095,9 +1100,12 @@ body {
 }
 
 .generated-doc-frame {
-  flex: 1;
+  /* Grow to fill when the editor is closed (current full-height doc view), but never shrink
+     below a usable height — so when the editor is open the frame stays a real block the
+     modal scroll can reach, instead of collapsing to nothing. */
+  flex: 1 0 auto;
   width: 100%;
-  min-height: 0;
+  min-height: 24rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: #ffffff;
@@ -1220,6 +1228,7 @@ body {
 /* "Which model ran" badge — the accent in its softest, smallest form. */
 .generated-doc-meta {
   display: flex;
+  gap: calc(var(--space-2) * 1rem);
 }
 
 .generated-doc-badge {
@@ -1305,6 +1314,22 @@ body {
   gap: calc(var(--space-2) * 1rem);
   padding: calc(var(--space-4) * 1rem);
   background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* Confirms (template switch / unsaved-close) stick to the top of the scrolling panel so a
+   warning triggered while scrolled to the bottom floats into view rather than off-screen. */
+.prompt-editor-nudge {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--space-2) * 1rem);
+  padding: calc(var(--space-2) * 1rem);
+  background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }

@@ -1,4 +1,10 @@
-import { useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import {
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -36,6 +42,10 @@ export function Modal({
 }: ModalProps): ReactElement {
   const dialogRef = useRef<HTMLDivElement>(null);
   const containTab = useFocusTrap(dialogRef);
+  // Only a press that BEGAN on the scrim is a real backdrop click. A text-selection
+  // drag that starts in an input and releases on the scrim must NOT close the modal
+  // (it would otherwise fire a scrim `click` and eat the user's edits mid-flight).
+  const pressStartedOnScrim = useRef(false);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Escape') {
@@ -45,11 +55,24 @@ export function Modal({
     containTab(event);
   };
 
+  const handleScrimMouseDown = (event: MouseEvent<HTMLDivElement>): void => {
+    pressStartedOnScrim.current = event.target === event.currentTarget;
+  };
+
+  const handleScrimClick = (event: MouseEvent<HTMLDivElement>): void => {
+    const started = pressStartedOnScrim.current;
+    pressStartedOnScrim.current = false;
+    if (closeOnScrimClick && started && event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
   return createPortal(
     <div
       className={scrimClassName ? `modal-scrim ${scrimClassName}` : 'modal-scrim'}
       data-testid={scrimTestId}
-      onClick={closeOnScrimClick ? onClose : undefined}
+      onMouseDown={handleScrimMouseDown}
+      onClick={handleScrimClick}
     >
       <div
         ref={dialogRef}

@@ -90,6 +90,20 @@ function parseTemplateParts(raw: unknown): GenTemplateParts {
     name: asString(record.name, 'name'),
     focusPrompt: asString(record.focusPrompt, 'focusPrompt'),
     whitepaperPrompt: asString(record.whitepaperPrompt, 'whitepaperPrompt'),
+    // The OPTIONAL parts (M07.C pipeline + the editable minutes prompt) must survive the
+    // boundary too — otherwise a saved edit to them is silently dropped here.
+    ...(record.planPrompt !== undefined
+      ? { planPrompt: asString(record.planPrompt, 'planPrompt') }
+      : {}),
+    ...(record.cssPrompt !== undefined
+      ? { cssPrompt: asString(record.cssPrompt, 'cssPrompt') }
+      : {}),
+    ...(record.htmlPrompt !== undefined
+      ? { htmlPrompt: asString(record.htmlPrompt, 'htmlPrompt') }
+      : {}),
+    ...(record.minutesPrompt !== undefined
+      ? { minutesPrompt: asString(record.minutesPrompt, 'minutesPrompt') }
+      : {}),
   };
 }
 
@@ -131,6 +145,7 @@ export interface GenIpcService {
   exportPdf(request: ExportRequest): Promise<ExportResult>;
   listTemplates(): GenTemplate[];
   saveTemplate(parts: GenTemplateParts): GenTemplate;
+  updateTemplate(id: string, parts: GenTemplateParts): GenTemplate;
   getTemplate(id: string): GenTemplate | null;
   deleteTemplate(id: string): void;
   getArtifacts(sessionId: string): GenDocument[];
@@ -145,6 +160,9 @@ export interface GenIpcService {
 export interface GenHandlerDeps {
   inFlight?: InFlightRegistry;
   broadcast?: (channel: string, payload: unknown) => void;
+  // Resolves a template id to its display name for the run toast (e.g. "Default" or a
+  // user template name). Wired main-side to the template store; absent → no name shown.
+  resolveTemplateName?: (templateId: string | undefined) => string | undefined;
 }
 
 // All streaming generators share the same wire shape: validate the invocation,
@@ -173,6 +191,7 @@ function streamGen(
   broadcast: (channel: string, payload: unknown) => void,
   userKind: GenKind | undefined,
   run: (request: GenWhitepaperRequest, handlers: GenStreamServiceHandlers) => Promise<GenDone>,
+  resolveTemplateName?: (templateId: string | undefined) => string | undefined,
 ): void {
   registrar.handle(channel, async (event, raw): Promise<GenStartResult> => {
     const { requestId, sessionId, templateId, model, reanalyze } = parseFocusInvocation(raw);
@@ -198,11 +217,15 @@ function streamGen(
     cancels.register(requestId, () => controller.abort());
     // EVERY run occupies the slot; only user-facing runs are advertised (the reattach
     // surface + the app-level persistent run toast via `gen:run-started`).
+    // Name the template for the run toast (user-facing runs only); focus stays unnamed.
+    const templateName =
+      userKind !== undefined ? resolveTemplateName?.(request.templateId) : undefined;
     const status = inFlight.start({
       requestId,
       sessionId,
       kind: userKind ?? 'focus',
       userFacing: userKind !== undefined,
+      ...(templateName !== undefined ? { templateName } : {}),
     });
     if (userKind !== undefined) {
       broadcast(GEN_CHANNELS.runStarted, status);
@@ -264,6 +287,7 @@ export function registerGenHandlers(
 ): void {
   const inFlight = deps.inFlight ?? createInFlightRegistry();
   const broadcast = deps.broadcast ?? ((): void => undefined);
+  const resolveTemplateName = deps.resolveTemplateName;
 
   // The internal focus leg (startOver's first step) is NOT a user-facing run — no in-flight
   // advertisement, no artifact-saved broadcast.
@@ -284,8 +308,10 @@ export function registerGenHandlers(
     broadcast,
     'whitepaper',
     (request, handlers) => service.generateWhitepaper(request, handlers),
+    resolveTemplateName,
   );
-  // Minutes carries no templateId (it uses the fixed MINUTES_PROMPT) — drop it.
+  // Minutes carries a templateId now (its prompt is editable per template) — thread it
+  // through so the service resolves the selected template's minutes prompt.
   streamGen(
     registrar,
     GEN_CHANNELS.generateMinutes,
@@ -298,9 +324,11 @@ export function registerGenHandlers(
         {
           sessionId: request.sessionId,
           ...(request.model !== undefined ? { model: request.model } : {}),
+          ...(request.templateId !== undefined ? { templateId: request.templateId } : {}),
         },
         handlers,
       ),
+    resolveTemplateName,
   );
 
   // gen:cancel — abort the in-flight generation for { requestId } (idempotent; unknown → false).
@@ -345,6 +373,13 @@ export function registerGenHandlers(
   registrar.handle(GEN_CHANNELS.saveTemplate, (_event, raw) =>
     service.saveTemplate(parseTemplateParts(raw)),
   );
+
+  // The payload carries { id, parts }: update an existing fork in place (same id, new
+  // name + prompts). Same boundary validation as saveTemplate for the parts.
+  registrar.handle(GEN_CHANNELS.updateTemplate, (_event, raw) => {
+    const record = asObject(raw, 'request');
+    return service.updateTemplate(asString(record.id, 'id'), parseTemplateParts(record.parts));
+  });
 
   registrar.handle(GEN_CHANNELS.getTemplate, (_event, raw) =>
     service.getTemplate(asString(asObject(raw, 'request').id, 'id')),

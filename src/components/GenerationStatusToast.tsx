@@ -107,7 +107,7 @@ export function GenerationStatusToast({
       show({
         key: `gen-run-${run.requestId}`,
         variant: 'progress',
-        message: `${name ? `${name} · ` : ''}${genKindLabel(run.kind)} — ${elapsed}${step ? ` · ${step.label}` : ''}`,
+        message: `${name ? `${name} · ` : ''}${genKindLabel(run.kind)}${run.templateName ? ` · ${run.templateName}` : ''} — ${elapsed}${step ? ` · ${step.label}` : ''}`,
         // "Cancel All" (not bare "Cancel") so it reads distinctly from the busy toast's
         // "Cancel current & start this one" when both are visible — this toast only stops
         // the running build; it never starts a new one.

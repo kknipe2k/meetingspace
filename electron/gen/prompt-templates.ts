@@ -214,5 +214,6 @@ export const DEFAULT_TEMPLATE: GenTemplate = {
   planPrompt: PLAN_PROMPT,
   cssPrompt: CSS_PROMPT,
   htmlPrompt: HTML_PROMPT,
+  minutesPrompt: MINUTES_PROMPT,
   isDefault: true,
 };
