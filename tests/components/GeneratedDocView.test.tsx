@@ -239,12 +239,15 @@ describe('GeneratedDocView', () => {
     await flushInline();
 
     await userEvent.click(screen.getByRole('button', { name: /start over/i }));
-    expect(h.focusCalls()).toBe(1); // re-analysis ran Part 1 (FOCUS)
+    expect(h.wpCalls()).toBe(2); // one whitepaper run, re-analyzing
+    expect(h.focusCalls()).toBe(0); // no separate focus leg
+    expect(h.lastWpRequest()?.reanalyze).toBe(true);
 
-    // The re-analysis times out — Retry must re-run START OVER (focus again), not generate.
+    // The re-analysis times out — Retry must re-run START OVER (reanalyze again), not a plain write.
     h.emitError('TIMEOUT_CEILING');
     await userEvent.click(await screen.findByRole('button', { name: /retry/i }));
-    expect(h.focusCalls()).toBe(2);
+    expect(h.wpCalls()).toBe(3);
+    expect(h.lastWpRequest()?.reanalyze).toBe(true);
   });
 
   it('does NOT render partial HTML while streaming; reveals the doc only on done', async () => {
@@ -334,8 +337,8 @@ describe('GeneratedDocView', () => {
     expect(screen.getByRole('button', { name: 'Minutes' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: /generation model/i })).toBeDisabled();
 
-    // Anchored 'Cancel' — the progress toast's action is 'Cancel generation', so a loose
-    // /cancel/i would match both (M07.B).
+    // Anchored '^Cancel$' — the app-level progress toast's action is 'Cancel All', so a
+    // loose /cancel/i would match both (M07.B). This targets the modal's own Cancel.
     await userEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
 
     expect(h.cancels()).toBe(1);
@@ -400,12 +403,12 @@ describe('GeneratedDocView', () => {
     h.emitChunk('<html><body><h1>v2</h1></body></html>');
     h.emitDone();
 
-    // Start over = re-analyze (runs Part 1 first, then the write step).
+    // Start over = re-analyze, now ONE whitepaper run carrying reanalyze:true — NOT a
+    // separate renderer-orchestrated focus leg.
     await userEvent.click(screen.getByRole('button', { name: /start over/i }));
-    expect(h.focusCalls()).toBe(1);
-    h.emitProgress('focus');
-    h.emitDone({ kind: 'focus' }); // focus done → triggers the write step
     expect(h.wpCalls()).toBe(3);
+    expect(h.focusCalls()).toBe(0);
+    expect(h.lastWpRequest()?.reanalyze).toBe(true);
   });
 
   it('does NOT inline screenshots into the in-app preview (text-only — the v1 split)', async () => {

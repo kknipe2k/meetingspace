@@ -175,6 +175,27 @@ describe('createGenerationService.generateWhitepaper', () => {
     expect(done.kind).toBe('whitepaper');
   });
 
+  it('reanalyze:true re-runs Part 1 even when a FOCUS artifact exists, then writes from the FRESH FOCUS', async () => {
+    const { client, seen } = chunkedClient();
+    const artifacts = fakeArtifacts([FOCUS_SEED]);
+    const { service } = makeService({ client, artifacts });
+
+    const done = await service.generateWhitepaper(
+      { sessionId: 's1', reanalyze: true },
+      { onChunk: () => undefined },
+    );
+
+    // Part 1 (FOCUS) re-ran despite an existing FOCUS doc — it leads the call sequence.
+    expect(seen[0]?.system?.startsWith('FOCUS-SYSTEM-PROMPT')).toBe(true);
+    // A fresh FOCUS artifact was persisted (the seed + the re-analysis).
+    expect(artifacts.saved.filter((d) => d.kind === 'focus')).toHaveLength(2);
+    // The pipeline wrote from the FRESH FOCUS ("FOCUS doc"), not the stale seed.
+    const planCall = seen.find((r) => r.system?.startsWith('PLAN-SYS'));
+    expect(JSON.stringify(planCall?.messages)).toContain('FOCUS doc');
+    expect(JSON.stringify(planCall?.messages)).not.toContain('EXISTING FOCUS DOC');
+    expect(done.kind).toBe('whitepaper');
+  });
+
   it('persists the ASSEMBLED document as ONE whitepaper artifact (code-owned shell)', async () => {
     const artifacts = fakeArtifacts([FOCUS_SEED]);
     const { service } = makeService({ artifacts });

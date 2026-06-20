@@ -380,14 +380,17 @@ export interface GenFocusRequest {
   readonly model?: string;
 }
 
-// The renderer → main white-paper (Part 2) request — same shape as the FOCUS
-// request (the corpus + the persisted FOCUS artifact are read MAIN-SIDE). It NEVER
-// carries the key. When no FOCUS artifact exists yet, the main process runs Part 1
-// first (silently), so a single request just works.
+// The renderer → main white-paper request (the corpus + the persisted FOCUS artifact
+// are read MAIN-SIDE). It NEVER carries the key. When no FOCUS artifact exists yet, the
+// main process runs Part 1 first (silently), so a single request just works.
+// `reanalyze` is the one knob distinguishing Regenerate from Start over: when true the
+// FOCUS analysis is recomputed before the write, instead of reusing the saved one — so
+// both are ONE main-side run (no renderer-orchestrated focus leg).
 export interface GenWhitepaperRequest {
   readonly sessionId: string;
   readonly templateId?: string;
   readonly model?: string;
+  readonly reanalyze?: boolean;
 }
 
 // The renderer -> main structured-minutes request (M04.C). Like the white-paper

@@ -180,4 +180,23 @@ describe('single build slot — the busy toast (never a silent no-op)', () => {
     expect(h.wpCalls()).toBe(1);
     expect(h.cancel).not.toHaveBeenCalled();
   });
+
+  it('dismisses the busy toast when the live run ends by another path (no orphaned toast)', async () => {
+    const h = harness();
+    view(h);
+    await startAndGetBusy(h);
+
+    // The busy toast is up, naming the live run.
+    expect(screen.getByText(/other session · white paper/i)).toBeInTheDocument();
+
+    // The user cancels the live run from the app-level run toast (NOT the handoff here),
+    // so it settles via a different path.
+    h.emitRunEnded({ requestId: 'live-1' });
+    await act(async () => {});
+
+    // The busy toast must clear — it cannot orphan onto a now-dead run.
+    expect(screen.queryByText(/other session · white paper/i)).not.toBeInTheDocument();
+    // And the pinned invariant still holds: no auto-start without the labeled click.
+    expect(h.wpCalls()).toBe(1);
+  });
 });
