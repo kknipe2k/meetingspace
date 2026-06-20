@@ -154,6 +154,7 @@ export const genClient: GenClient = {
   exportPdf: (request) => window.api.gen.exportPdf(request),
   listTemplates: () => window.api.gen.listTemplates(),
   saveTemplate: (parts) => window.api.gen.saveTemplate(parts),
+  updateTemplate: (id, parts) => window.api.gen.updateTemplate(id, parts),
   getTemplate: (id) => window.api.gen.getTemplate(id),
   deleteTemplate: (id) => window.api.gen.deleteTemplate(id),
   getArtifacts: (sessionId) => window.api.gen.getArtifacts(sessionId),

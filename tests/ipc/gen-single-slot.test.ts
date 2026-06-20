@@ -66,6 +66,7 @@ function baseService(overrides: Partial<GenIpcService> = {}): GenIpcService {
     exportPdf: () => Promise.resolve({ saved: true, path: '/x.pdf' }),
     listTemplates: () => [],
     saveTemplate: (parts) => ({ id: 't', isDefault: false, ...parts }),
+    updateTemplate: (id, parts) => ({ id, isDefault: false, ...parts }),
     getTemplate: () => null,
     deleteTemplate: () => undefined,
     getArtifacts: () => [],

@@ -76,6 +76,7 @@ function fakeService(overrides: Partial<GenIpcService> = {}): GenIpcService {
     exportPdf: () => Promise.resolve({ saved: true, path: '/tmp/out.pdf' }),
     listTemplates: () => [TEMPLATE],
     saveTemplate: (parts: GenTemplateParts) => ({ id: 'tmpl-1', isDefault: false, ...parts }),
+    updateTemplate: (id: string, parts: GenTemplateParts) => ({ id, isDefault: false, ...parts }),
     getTemplate: () => TEMPLATE,
     deleteTemplate: () => undefined,
     getArtifacts: () => [],
@@ -87,7 +88,7 @@ function fakeService(overrides: Partial<GenIpcService> = {}): GenIpcService {
 const FOCUS = { requestId: 'r1', sessionId: 's1', templateId: 'default', model: 'claude-opus-4-8' };
 
 describe('gen IPC handlers', () => {
-  it('registers exactly the sixteen gen handler channels (M07.B status + getLatestArtifacts; M06.C exportPdf)', () => {
+  it('registers exactly the seventeen gen handler channels (M07.B status + getLatestArtifacts; M06.C exportPdf; updateTemplate)', () => {
     const registrar = fakeRegistrar();
     registerGenHandlers(registrar, fakeService());
     expect(new Set(registrar.handlers.keys())).toEqual(
@@ -102,6 +103,7 @@ describe('gen IPC handlers', () => {
         GEN_CHANNELS.exportPdf,
         GEN_CHANNELS.listTemplates,
         GEN_CHANNELS.saveTemplate,
+        GEN_CHANNELS.updateTemplate,
         GEN_CHANNELS.getTemplate,
         GEN_CHANNELS.deleteTemplate,
         GEN_CHANNELS.getArtifacts,
@@ -277,5 +279,92 @@ describe('gen IPC handlers', () => {
     expect(
       await registrar.handlers.get(GEN_CHANNELS.getArtifacts)?.(event, { sessionId: 's1' }),
     ).toEqual(artifacts);
+  });
+
+  it('preserves minutesPrompt through the save/update parse boundary (not just focus/whitepaper)', async () => {
+    const registrar = fakeRegistrar();
+    let savedParts: GenTemplateParts | undefined;
+    let updatedParts: GenTemplateParts | undefined;
+    registerGenHandlers(
+      registrar,
+      fakeService({
+        saveTemplate: (parts) => {
+          savedParts = parts;
+          return { id: 'tmpl-1', isDefault: false, ...parts };
+        },
+        updateTemplate: (id, parts) => {
+          updatedParts = parts;
+          return { id, isDefault: false, ...parts };
+        },
+      }),
+    );
+    const { event } = fakeEvent();
+
+    const payload = {
+      name: 'Mine',
+      focusPrompt: 'F',
+      whitepaperPrompt: 'W',
+      minutesPrompt: 'M-EDITED',
+    };
+    await registrar.handlers.get(GEN_CHANNELS.saveTemplate)?.(event, payload);
+    await registrar.handlers.get(GEN_CHANNELS.updateTemplate)?.(event, {
+      id: 'tmpl-1',
+      parts: payload,
+    });
+
+    // The minutes prompt must survive the IPC parse — the bug was it being dropped.
+    expect(savedParts).toMatchObject({
+      focusPrompt: 'F',
+      whitepaperPrompt: 'W',
+      minutesPrompt: 'M-EDITED',
+    });
+    expect(updatedParts).toMatchObject({ minutesPrompt: 'M-EDITED' });
+  });
+
+  it('threads templateId to generateMinutes (so the selected template’s minutes prompt is used)', async () => {
+    const registrar = fakeRegistrar();
+    let seenMinutes: GenMinutesRequest | undefined;
+    registerGenHandlers(
+      registrar,
+      fakeService({
+        generateMinutes: (request) => {
+          seenMinutes = request;
+          return Promise.resolve({
+            stopReason: 'end_turn',
+            usage: { inputTokens: 0, outputTokens: 0 },
+            kind: 'minutes',
+          });
+        },
+      }),
+    );
+    const { event } = fakeEvent();
+
+    await registrar.handlers.get(GEN_CHANNELS.generateMinutes)?.(event, {
+      requestId: 'r1',
+      sessionId: 's1',
+      templateId: 'tmpl-9',
+      model: 'claude-opus-4-8',
+    });
+
+    expect(seenMinutes).toMatchObject({ sessionId: 's1', templateId: 'tmpl-9' });
+  });
+
+  it('names the driving template in the run-started broadcast (resolveTemplateName)', async () => {
+    const registrar = fakeRegistrar();
+    const broadcasts: Array<{ channel: string; payload: unknown }> = [];
+    registerGenHandlers(registrar, fakeService(), undefined, {
+      broadcast: (channel, payload) => broadcasts.push({ channel, payload }),
+      resolveTemplateName: (id) => (id === 'tmpl-9' ? 'My template' : 'Default'),
+    });
+    const { event } = fakeEvent();
+
+    await registrar.handlers.get(GEN_CHANNELS.generateWhitepaper)?.(event, {
+      requestId: 'r1',
+      sessionId: 's1',
+      templateId: 'tmpl-9',
+    });
+
+    const started = broadcasts.find((b) => b.channel === GEN_CHANNELS.runStarted);
+    expect(started?.payload).toMatchObject({ kind: 'whitepaper', templateName: 'My template' });
   });
 });

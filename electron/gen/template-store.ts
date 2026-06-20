@@ -46,10 +46,40 @@ export class TemplateStore {
       ...(parts.planPrompt !== undefined ? { planPrompt: parts.planPrompt } : {}),
       ...(parts.cssPrompt !== undefined ? { cssPrompt: parts.cssPrompt } : {}),
       ...(parts.htmlPrompt !== undefined ? { htmlPrompt: parts.htmlPrompt } : {}),
+      ...(parts.minutesPrompt !== undefined ? { minutesPrompt: parts.minutesPrompt } : {}),
       isDefault: false,
     };
     this.writeForks([...this.readForks(), fork]);
     return fork;
+  }
+
+  updateTemplate(id: string, parts: GenTemplateParts): GenTemplate {
+    // The seed is immutable — it can be neither overwritten nor deleted.
+    if (id === SEED_TEMPLATE_ID) {
+      throw new Error('Unknown template: ' + id);
+    }
+    const forks = this.readForks();
+    const index = forks.findIndex((template) => template.id === id);
+    if (index === -1) {
+      throw new Error('Unknown template: ' + id);
+    }
+    const updated: GenTemplate = {
+      id,
+      name: parts.name,
+      focusPrompt: parts.focusPrompt,
+      whitepaperPrompt: parts.whitepaperPrompt,
+      // M07.C pipeline parts — optional; absent fields are omitted (not stored as
+      // undefined) so a fork file stays v1-shaped until a part is actually edited.
+      ...(parts.planPrompt !== undefined ? { planPrompt: parts.planPrompt } : {}),
+      ...(parts.cssPrompt !== undefined ? { cssPrompt: parts.cssPrompt } : {}),
+      ...(parts.htmlPrompt !== undefined ? { htmlPrompt: parts.htmlPrompt } : {}),
+      ...(parts.minutesPrompt !== undefined ? { minutesPrompt: parts.minutesPrompt } : {}),
+      isDefault: false,
+    };
+    const next = [...forks];
+    next[index] = updated;
+    this.writeForks(next);
+    return updated;
   }
 
   deleteTemplate(id: string): void {
@@ -97,6 +127,7 @@ function isForkTemplate(value: unknown): value is GenTemplate {
     // strings when present — a corrupt part degrades the fork away, not the run.
     optionalString(record.planPrompt) &&
     optionalString(record.cssPrompt) &&
-    optionalString(record.htmlPrompt)
+    optionalString(record.htmlPrompt) &&
+    optionalString(record.minutesPrompt)
   );
 }

@@ -176,6 +176,7 @@ export const GEN_CHANNELS = {
   deleteTemplate: 'gen:deleteTemplate',
   listTemplates: 'gen:listTemplates',
   saveTemplate: 'gen:saveTemplate',
+  updateTemplate: 'gen:updateTemplate',
   getArtifacts: 'gen:getArtifacts',
   // M07.B (F16): latest-per-kind payload (one row per kind) for the modal's mount fetch —
   // replaces shipping every revision's full content (`getArtifacts`, kept for callers that

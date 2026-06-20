@@ -108,6 +108,17 @@ describe('GenerationStatusToast — app-level persistent run toast', () => {
     expect(within(toast).getByRole('button', { name: /cancel/i })).toBeInTheDocument();
   });
 
+  it('names the driving template in the toast (so the user sees which prompt ran)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(RUN.startedAt + 1_000);
+    const h = harness();
+    mount(h);
+
+    h.emitStarted({ ...RUN, templateName: 'My template' });
+
+    expect(host()).toHaveTextContent(/My template/);
+  });
+
   it('the toast is INDEPENDENT of the modal — it persists when the modal unmounts', () => {
     vi.useFakeTimers();
     vi.setSystemTime(RUN.startedAt);
