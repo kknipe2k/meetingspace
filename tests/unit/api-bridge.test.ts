@@ -83,6 +83,7 @@ const noopGen: GenApi = {
   exportPdf: () => Promise.resolve({ saved: false }),
   listTemplates: () => Promise.resolve([]),
   saveTemplate: () => Promise.resolve({} as never),
+  updateTemplate: () => Promise.resolve({} as never),
   getTemplate: () => Promise.resolve(null),
   deleteTemplate: () => Promise.resolve(),
   getArtifacts: () => Promise.resolve([]),
@@ -260,6 +261,7 @@ describe('preload contextBridge contract', () => {
       'onRunStarted',
       'saveTemplate',
       'status',
+      'updateTemplate',
     ]);
   });
 

@@ -44,7 +44,9 @@ describe('CapturePicker', () => {
     const onClose = vi.fn();
     render(<CapturePicker result={granted()} onPick={vi.fn()} onClose={onClose} />);
 
-    fireEvent.click(screen.getByTestId('capture-scrim'));
+    const scrim = screen.getByTestId('capture-scrim');
+    fireEvent.mouseDown(scrim);
+    fireEvent.click(scrim);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

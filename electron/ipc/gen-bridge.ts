@@ -182,6 +182,8 @@ export function createGenApi(
     listTemplates: () => transport.invoke(GEN_CHANNELS.listTemplates) as Promise<GenTemplate[]>,
     saveTemplate: (parts: GenTemplateParts) =>
       transport.invoke(GEN_CHANNELS.saveTemplate, parts) as Promise<GenTemplate>,
+    updateTemplate: (id: string, parts: GenTemplateParts) =>
+      transport.invoke(GEN_CHANNELS.updateTemplate, { id, parts }) as Promise<GenTemplate>,
     getTemplate: (id: string) =>
       transport.invoke(GEN_CHANNELS.getTemplate, { id }) as Promise<GenTemplate | null>,
     deleteTemplate: (id: string) =>

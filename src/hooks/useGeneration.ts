@@ -37,6 +37,9 @@ export interface ModeDoc {
   readonly html: string;
   /** The model the API answered with for this mode's doc (for the badge), or null. */
   readonly model: string | null;
+  /** The id of the template that produced this doc (for the template chip), or null
+   *  (raw / no-content / pre-template docs). */
+  readonly templateId: string | null;
 }
 
 export interface UseGenerationOptions {
@@ -82,7 +85,7 @@ export interface UseGeneration {
   refresh(): void;
 }
 
-const EMPTY_DOC: ModeDoc = { html: '', model: null };
+const EMPTY_DOC: ModeDoc = { html: '', model: null, templateId: null };
 const EMPTY_DOCS: Record<GenMode, ModeDoc> = {
   whitepaper: EMPTY_DOC,
   minutes: EMPTY_DOC,
@@ -101,6 +104,9 @@ export function useGeneration(
   onCompleteRef.current = options.onComplete;
 
   const [docs, setDocs] = useState<Record<GenMode, ModeDoc>>(EMPTY_DOCS);
+  // Latest docs on a ref so cancel can restore the pre-run slot without a reactive dep.
+  const docsRef = useRef<Record<GenMode, ModeDoc>>(EMPTY_DOCS);
+  docsRef.current = docs;
   const [initialMode, setInitialMode] = useState<GenMode | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMode, setStreamingMode] = useState<GenMode | null>(null);
@@ -120,6 +126,14 @@ export function useGeneration(
   // The pending busy handoff's run-ended unsubscribe — torn down on unmount so a
   // handoff can never auto-start into a dead (closed) modal.
   const handoffUnsubRef = useRef<(() => void) | null>(null);
+  // The committed slot snapshot taken when a run STARTS, so an explicit Cancel reverts the
+  // shown doc (+ its template chip) to exactly the last committed state — never the
+  // abandoned run's template. Cleared/reset on each new run.
+  const runSnapshotRef = useRef<{ mode: GenMode; doc: ModeDoc } | null>(null);
+  // True once the user cancels and until the next run/refresh — makes a late
+  // gen:artifact-saved for the abandoned run a no-op (the broadcast carries no requestId,
+  // so this is how the renderer declines to adopt a run it abandoned).
+  const cancelledRef = useRef(false);
 
   const fail = useCallback((payload: LlmErrorPayload): void => {
     cancelRef.current = null;
@@ -131,7 +145,8 @@ export function useGeneration(
 
   const commit = useCallback((kind: GenMode): void => {
     cancelRef.current = null;
-    const committed: ModeDoc = { html: accRef.current, model: modelRef.current };
+    // Buffer-only commits are the no-content marker / raw doc — no template.
+    const committed: ModeDoc = { html: accRef.current, model: modelRef.current, templateId: null };
     setDocs((prev) => ({ ...prev, [kind]: committed }));
     setIsStreaming(false);
     setStreamingMode(null);
@@ -156,11 +171,18 @@ export function useGeneration(
       if (kind !== 'whitepaper' && kind !== 'minutes') {
         return;
       }
+      // The user abandoned the in-flight run — don't adopt its (possibly just-saved) doc.
+      if (cancelledRef.current) {
+        return;
+      }
       try {
         const arts = await client.getLatestArtifacts(sessionId);
         const doc = arts.find((d) => d.kind === kind);
         if (doc) {
-          setDocs((prev) => ({ ...prev, [kind]: { html: doc.content, model: doc.model ?? null } }));
+          setDocs((prev) => ({
+            ...prev,
+            [kind]: { html: doc.content, model: doc.model ?? null, templateId: doc.templateId },
+          }));
         }
       } catch {
         // Non-fatal: a failed live refresh leaves the prior slot intact.
@@ -211,6 +233,8 @@ export function useGeneration(
   // session). On unmount: DETACH (keep the run alive), never cancel.
   useEffect(() => {
     let active = true;
+    // A (re)mount or manual refresh re-enables artifact adoption (clears a prior cancel).
+    cancelledRef.current = false;
 
     Promise.all([client.getLatestArtifacts(sessionId), client.status(sessionId)])
       .then(([arts, status]) => {
@@ -222,9 +246,23 @@ export function useGeneration(
         setDocs((prev) => ({
           ...prev,
           ...(whitepaper
-            ? { whitepaper: { html: whitepaper.content, model: whitepaper.model ?? null } }
+            ? {
+                whitepaper: {
+                  html: whitepaper.content,
+                  model: whitepaper.model ?? null,
+                  templateId: whitepaper.templateId,
+                },
+              }
             : {}),
-          ...(minutes ? { minutes: { html: minutes.content, model: minutes.model ?? null } } : {}),
+          ...(minutes
+            ? {
+                minutes: {
+                  html: minutes.content,
+                  model: minutes.model ?? null,
+                  templateId: minutes.templateId,
+                },
+              }
+            : {}),
         }));
         const newest = arts.find((d) => d.kind === 'whitepaper' || d.kind === 'minutes');
         if (newest) {
@@ -288,6 +326,9 @@ export function useGeneration(
 
   // Setters/refs are stable, so these helpers carry no reactive deps.
   const startRun = useCallback((mode: GenMode): void => {
+    // Snapshot the committed slot so a later Cancel reverts to it; re-enable adoption.
+    runSnapshotRef.current = { mode, doc: docsRef.current[mode] };
+    cancelledRef.current = false;
     // Starting a NEW run replaces any in-flight one — cancel it (stop its spend).
     cancelRef.current?.cancel();
     cancelRef.current = null;
@@ -320,7 +361,10 @@ export function useGeneration(
       const request = { sessionId, ...(params.model ? { model: params.model } : {}) };
       cancelRef.current =
         params.mode === 'minutes'
-          ? client.generateMinutes(request, streamCallbacks('minutes'))
+          ? client.generateMinutes(
+              { ...request, ...(params.templateId ? { templateId: params.templateId } : {}) },
+              streamCallbacks('minutes'),
+            )
           : client.generateWhitepaper(
               {
                 ...request,
@@ -362,6 +406,13 @@ export function useGeneration(
   const cancel = useCallback((): void => {
     cancelRef.current?.cancel();
     cancelRef.current = null;
+    // Decline any late save for this abandoned run, and revert the shown doc (+ chip) to
+    // the slot as it was before the run started (last committed, or empty ⇒ no chip).
+    cancelledRef.current = true;
+    const snapshot = runSnapshotRef.current;
+    if (snapshot) {
+      setDocs((prev) => ({ ...prev, [snapshot.mode]: snapshot.doc }));
+    }
     setIsStreaming(false);
     setStreamingMode(null);
     setProgress(null);

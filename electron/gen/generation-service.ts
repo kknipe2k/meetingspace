@@ -794,6 +794,7 @@ export function createGenerationService({
       return { stopReason: 'no_content', usage: NO_CONTENT_USAGE, kind: 'minutes' };
     }
 
+    const template = resolveTemplate(request.templateId);
     const model = resolveModel(request.model);
     const maxTokens = resolveMaxTokens(model);
 
@@ -813,7 +814,9 @@ export function createGenerationService({
       handlers,
       model,
       maxTokens,
-      system: MINUTES_PROMPT,
+      // The template's editable minutes prompt; absent OR cleared-to-empty (it's a
+      // user-editable textarea) → the factory default, so minutes never runs prompt-less.
+      system: template.minutesPrompt || MINUTES_PROMPT,
       content,
       onDelta: handlers.onChunk,
     });
@@ -825,7 +828,9 @@ export function createGenerationService({
       sessionId: request.sessionId,
       kind: 'minutes',
       content: html,
-      templateId: null,
+      // Record the template that produced these minutes (it has an editable prompt now),
+      // so the renderer can show the template chip on the persisted doc too.
+      templateId: template.id,
       model,
     });
 

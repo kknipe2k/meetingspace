@@ -31,7 +31,9 @@ describe('Lightbox', () => {
     const onClose = vi.fn();
     render(<Lightbox src="asset://s1/shot.png" onClose={onClose} />);
 
-    fireEvent.click(screen.getByTestId('lightbox-scrim'));
+    const scrim = screen.getByTestId('lightbox-scrim');
+    fireEvent.mouseDown(scrim);
+    fireEvent.click(scrim);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

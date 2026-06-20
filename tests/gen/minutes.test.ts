@@ -107,6 +107,40 @@ describe('createGenerationService.generateMinutes', () => {
     expect(content.some((b) => b.type === 'image')).toBe(true);
   });
 
+  it("uses the template's minutesPrompt when present (editable minutes), falling back to MINUTES_PROMPT", async () => {
+    let seen: StreamRequest | undefined;
+    const forked: GenTemplateReader = {
+      getTemplate: () => ({
+        id: 'fork-1',
+        name: 'Fork',
+        focusPrompt: 'f',
+        whitepaperPrompt: 'w',
+        minutesPrompt: 'CUSTOM-MINUTES-SYSTEM',
+        isDefault: false,
+      }),
+    };
+    const service = createGenerationService({
+      keyStore: { getKeyForMain: () => KEY },
+      clientFactory: () =>
+        fakeClient((request, onChunk) => {
+          seen = request;
+          onChunk('<h1>M</h1>');
+          return DONE;
+        }),
+      templates: forked,
+      notes: notesWith([note('Notes.')]),
+      assets: assetsWith(),
+      artifacts: artifactStore(),
+    });
+
+    await service.generateMinutes(
+      { sessionId: 's1', templateId: 'fork-1' },
+      { onChunk: () => undefined },
+    );
+
+    expect(seen?.system).toBe('CUSTOM-MINUTES-SYSTEM');
+  });
+
   it('persists the streamed minutes as a `minutes` artifact', async () => {
     const artifacts = artifactStore();
     const service = createGenerationService({
@@ -125,7 +159,12 @@ describe('createGenerationService.generateMinutes', () => {
     await service.generateMinutes({ sessionId: 's1' }, { onChunk: () => undefined });
 
     expect(artifacts.saved).toHaveLength(1);
-    expect(artifacts.saved[0]).toMatchObject({ sessionId: 's1', kind: 'minutes' });
+    // The template that produced the minutes is recorded (for the doc's template chip).
+    expect(artifacts.saved[0]).toMatchObject({
+      sessionId: 's1',
+      kind: 'minutes',
+      templateId: 'default',
+    });
   });
 
   it('emits a no-content marker and skips the SDK for an empty session', async () => {

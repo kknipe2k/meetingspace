@@ -760,6 +760,7 @@ app
       exportPdf: (request) => exportPdf(request, { renderHtmlToPdf, save: savePdfFile }),
       listTemplates: () => templateStore.listTemplates(),
       saveTemplate: (parts) => templateStore.saveTemplate(parts),
+      updateTemplate: (id, parts) => templateStore.updateTemplate(id, parts),
       getTemplate: (id) => templateStore.getTemplate(id),
       deleteTemplate: (id) => templateStore.deleteTemplate(id),
       getArtifacts: (sessionId) => artifactStore.getArtifacts(sessionId),
@@ -780,6 +781,9 @@ app
     registerGenHandlers(registrar, genIpc, createCancelRegistry(), {
       inFlight: createInFlightRegistry(),
       broadcast: broadcastToWindows,
+      // Name the run toast by the template driving it (Default or a user template).
+      resolveTemplateName: (templateId) =>
+        templateStore.getTemplate(templateId ?? 'default')?.name ?? 'Default',
     });
     // Cross-session full-text search (M04.D). SearchStore reads the v4 FTS5 indexes over
     // the same db handle; no key, no SDK, no network — purely a read over local content.

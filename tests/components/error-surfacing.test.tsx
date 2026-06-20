@@ -235,7 +235,7 @@ describe('PromptTemplateEditor — template mutation failures surface', () => {
     isDefault: false,
   };
 
-  it('a saveTemplate failure raises an error toast', async () => {
+  it('a saveTemplate failure (New from default) raises an error toast', async () => {
     const client = {
       listTemplates: () => Promise.resolve([seed]),
       saveTemplate: () => Promise.reject(new Error('write failed')),
@@ -252,7 +252,33 @@ describe('PromptTemplateEditor — template mutation failures surface', () => {
     );
     await screen.findByDisplayValue('f');
 
-    await userEvent.click(screen.getByRole('button', { name: /save as new version/i }));
+    await userEvent.click(screen.getByRole('button', { name: /new from default/i }));
+
+    await waitFor(() =>
+      expect(within(toastHost()).getByText(/couldn't create/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('an updateTemplate (Save) failure raises an error toast', async () => {
+    const client = {
+      listTemplates: () => Promise.resolve([seed, fork]),
+      saveTemplate: () => Promise.resolve(fork),
+      updateTemplate: () => Promise.reject(new Error('write failed')),
+      deleteTemplate: () => Promise.resolve(),
+    } as unknown as NonNullable<Parameters<typeof PromptTemplateEditor>[0]['client']>;
+    render(
+      withToasts(
+        <PromptTemplateEditor
+          client={client}
+          selectedTemplateId="fork1"
+          onSelectTemplate={() => undefined}
+        />,
+      ),
+    );
+    const focus = await screen.findByLabelText(/focus prompt/i);
+    await userEvent.type(focus, ' edited');
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() =>
       expect(within(toastHost()).getByText(/couldn't save/i)).toBeInTheDocument(),
