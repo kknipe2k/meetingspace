@@ -2,6 +2,14 @@
 
 Notable changes, newest first.
 
+## 1.2.0 — 2026-06-20
+
+- **Editable minutes prompt:** the minutes generator now has its own editable prompt, alongside the white paper — adjust its structure and tone per template.
+- **Redesigned prompt editor:** save changes in place, create copies from the default, rename, delete, and an explicit **Close** button. Unsaved edits are now guarded — closing the editor, or starting a generation, prompts you to **Save & close**, **Discard & close**, or **Keep editing** (a generation waits until you choose).
+- **Clearer generated documents:** a chip on each generated document names the template that produced it (and the progress toast names it too).
+- **Cancelling is safe:** cancelling a regeneration restores the previously generated document and its template, instead of leaving a half-applied state.
+- **Editor usability:** the generation window scrolls as one piece, so a long prompt never hides the document below it; selecting text inside the window no longer closes it by accident.
+
 ## 1.1.0 — 2026-06-17
 
 - **Desktop polish:** native menus, right-click context menu, dark mode, window-state and zoom persistence, find, and keyboard shortcuts.
