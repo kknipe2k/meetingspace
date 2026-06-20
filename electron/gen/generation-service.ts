@@ -436,8 +436,12 @@ export function createGenerationService({
     }
 
     // The chunked pipeline's primary reference is the persisted FOCUS doc; reuse it
-    // when present so a re-run never redoes Part 1 (M04.A decision #3).
-    let focusDoc = artifacts.getLatestArtifact(request.sessionId, 'focus')?.content ?? null;
+    // when present so a re-run never redoes Part 1 (M04.A decision #3) — UNLESS the caller
+    // asked to reanalyze (Start over), which forces a fresh Part 1 before the write. This
+    // is what folds Start over into ONE run instead of a renderer-orchestrated focus leg.
+    let focusDoc = request.reanalyze
+      ? null
+      : (artifacts.getLatestArtifact(request.sessionId, 'focus')?.content ?? null);
     if (focusDoc === null) {
       const corpus = buildCorpus(request.sessionId, { notes, assets });
       if (corpus.noteCount === 0 && corpus.imageBlocks.length === 0) {

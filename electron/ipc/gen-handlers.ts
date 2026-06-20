@@ -49,6 +49,13 @@ function asString(value: unknown, field: string): string {
   return value;
 }
 
+function asBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new TypeError(`gen ipc: ${field} must be a boolean`);
+  }
+  return value;
+}
+
 function asObject(raw: unknown, label: string): Record<string, unknown> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new TypeError(`gen ipc: ${label} must be an object`);
@@ -56,7 +63,9 @@ function asObject(raw: unknown, label: string): Record<string, unknown> {
   return raw as Record<string, unknown>;
 }
 
-interface FocusInvocation extends GenFocusRequest {
+// Carries GenWhitepaperRequest's superset (incl. the optional `reanalyze`) so the one
+// parser serves focus/whitepaper/minutes; focus + minutes simply ignore `reanalyze`.
+interface FocusInvocation extends GenWhitepaperRequest {
   readonly requestId: string;
 }
 
@@ -69,6 +78,9 @@ function parseFocusInvocation(raw: unknown): FocusInvocation {
       ? { templateId: asString(record.templateId, 'templateId') }
       : {}),
     ...(record.model !== undefined ? { model: asString(record.model, 'model') } : {}),
+    ...(record.reanalyze !== undefined
+      ? { reanalyze: asBoolean(record.reanalyze, 'reanalyze') }
+      : {}),
   };
 }
 
@@ -160,15 +172,18 @@ function streamGen(
   inFlight: InFlightRegistry,
   broadcast: (channel: string, payload: unknown) => void,
   userKind: GenKind | undefined,
-  run: (request: GenFocusRequest, handlers: GenStreamServiceHandlers) => Promise<GenDone>,
+  run: (request: GenWhitepaperRequest, handlers: GenStreamServiceHandlers) => Promise<GenDone>,
 ): void {
   registrar.handle(channel, async (event, raw): Promise<GenStartResult> => {
-    const { requestId, sessionId, templateId, model } = parseFocusInvocation(raw);
+    const { requestId, sessionId, templateId, model, reanalyze } = parseFocusInvocation(raw);
     const sender = (event as { sender: WebContentsLike }).sender;
-    const request: GenFocusRequest = {
+    // Typed as the whitepaper request (the superset) so `reanalyze` rides through to
+    // service.generateWhitepaper; focus/minutes ignore it.
+    const request: GenWhitepaperRequest = {
       sessionId,
       ...(templateId !== undefined ? { templateId } : {}),
       ...(model !== undefined ? { model } : {}),
+      ...(reanalyze !== undefined ? { reanalyze } : {}),
     };
 
     // The single-slot guard — BEFORE any registration or side effect.

@@ -50,6 +50,9 @@ export interface GenerateParams {
   mode: GenMode;
   model?: string;
   templateId?: string;
+  /** Whitepaper only: recompute the FOCUS analysis before writing (Start over) instead
+   *  of reusing the saved one (Regenerate / first Generate). */
+  reanalyze?: boolean;
 }
 
 export interface UseGeneration {
@@ -111,11 +114,9 @@ export function useGeneration(
   const accRef = useRef('');
   const modelRef = useRef<string | null>(null);
   const cancelRef = useRef<GenStreamHandle | null>(null);
-  // The last run (generate or startOver, with its params) so a transient error can be
+  // The last run's params (the reanalyze flag rides along) so a transient error can be
   // retried AND so the busy handoff can re-fire the refused start.
-  const lastRunRef = useRef<{ kind: 'generate' | 'startOver'; params: GenerateParams } | null>(
-    null,
-  );
+  const lastRunRef = useRef<{ params: GenerateParams } | null>(null);
   // The pending busy handoff's run-ended unsubscribe — torn down on unmount so a
   // handoff can never auto-start into a dead (closed) modal.
   const handoffUnsubRef = useRef<(() => void) | null>(null);
@@ -269,6 +270,22 @@ export function useGeneration(
     };
   }, [client, sessionId, streamCallbacks, reloadSlot, fail, reloadToken]);
 
+  // Clear the busy state when the run it points at ends by ANY path — chiefly when the
+  // user cancels the live run from the app-level run toast rather than via
+  // cancelCurrentAndStart. Without this the "Cancel current & start this one" toast
+  // orphans onto a dead run (visible, inert, only dismissable by the ✕). The handoff
+  // path clears busy itself; this covers plain-cancel and natural completion too.
+  useEffect(() => {
+    if (busy === null) {
+      return undefined;
+    }
+    return client.onRunEnded((event) => {
+      if (event.requestId === busy.requestId) {
+        setBusy(null);
+      }
+    });
+  }, [busy, client]);
+
   // Setters/refs are stable, so these helpers carry no reactive deps.
   const startRun = useCallback((mode: GenMode): void => {
     // Starting a NEW run replaces any in-flight one — cancel it (stop its spend).
@@ -285,7 +302,7 @@ export function useGeneration(
 
   const generate = useCallback(
     (params: GenerateParams): void => {
-      lastRunRef.current = { kind: 'generate', params };
+      lastRunRef.current = { params };
       startRun(params.mode);
 
       if (params.mode === 'raw') {
@@ -305,57 +322,42 @@ export function useGeneration(
         params.mode === 'minutes'
           ? client.generateMinutes(request, streamCallbacks('minutes'))
           : client.generateWhitepaper(
-              { ...request, ...(params.templateId ? { templateId: params.templateId } : {}) },
+              {
+                ...request,
+                ...(params.templateId ? { templateId: params.templateId } : {}),
+                // Start over = reanalyze; Regenerate/first Generate reuse the saved FOCUS.
+                ...(params.reanalyze ? { reanalyze: true } : {}),
+              },
               streamCallbacks('whitepaper'),
             );
     },
     [client, sessionId, startRun, streamCallbacks, commit, fail],
   );
 
+  // Start over = the SAME whitepaper run as Generate, with reanalyze:true so main
+  // recomputes the FOCUS analysis before writing. No renderer-orchestrated focus leg —
+  // it's one main-side run, so the run toast / reattach / single-slot all just work.
   const startOver = useCallback(
     (params: GenerateParams): void => {
-      lastRunRef.current = { kind: 'startOver', params };
-      startRun('whitepaper');
-      const request = {
-        sessionId,
-        ...(params.model ? { model: params.model } : {}),
-        ...(params.templateId ? { templateId: params.templateId } : {}),
-      };
-      // Part 1 (FOCUS) re-analysis: surface its progress but DISCARD its deltas
-      // (analysis, not the document); on its done, run the write step over the fresh FOCUS.
-      cancelRef.current = client.generateFocus(request, {
-        onChunk: () => undefined,
-        onProgress: (next) => setProgress(next),
-        onDone: () => {
-          cancelRef.current = client.generateWhitepaper(request, streamCallbacks('whitepaper'));
-        },
-        onError: fail,
-        onBusy: refused,
-      });
+      generate({ ...params, reanalyze: true });
     },
-    [client, sessionId, startRun, streamCallbacks, fail, refused],
+    [generate],
   );
 
-  // Latest-render refs so the busy handoff (an event-driven callback) re-fires the
-  // refused start without stale closures.
+  // Latest-render ref so the busy handoff (an event-driven callback) re-fires the
+  // refused start without a stale closure. `reanalyze` rides inside the stored params.
   const generateRef = useRef(generate);
   generateRef.current = generate;
-  const startOverRef = useRef(startOver);
-  startOverRef.current = startOver;
 
-  // Re-run the last generate/startOver (same params) after a transient error. No-op if
+  // Re-run the last run (same params, incl. reanalyze) after a transient error. No-op if
   // nothing has run yet or a stream is already in flight.
   const retry = useCallback((): void => {
     const last = lastRunRef.current;
     if (last === null || isStreaming) {
       return;
     }
-    if (last.kind === 'startOver') {
-      startOver(last.params);
-    } else {
-      generate(last.params);
-    }
-  }, [isStreaming, generate, startOver]);
+    generate(last.params);
+  }, [isStreaming, generate]);
 
   const cancel = useCallback((): void => {
     cancelRef.current?.cancel();
@@ -381,11 +383,7 @@ export function useGeneration(
       unsubscribe();
       handoffUnsubRef.current = null;
       setBusy(null);
-      if (last.kind === 'startOver') {
-        startOverRef.current(last.params);
-      } else {
-        generateRef.current(last.params);
-      }
+      generateRef.current(last.params);
     });
     handoffUnsubRef.current = unsubscribe;
     void client.cancel(live.requestId);
