@@ -29,7 +29,7 @@ There are two ways to get it. **Most people want Option A.**
 
 - **Node.js 18 LTS or newer** — check in PowerShell: `node --version` (should print `v18.x` or higher). If missing, install the **LTS** build from <https://nodejs.org> (defaults are fine).
 - **Git** (only if you'll clone rather than download a ZIP): <https://git-scm.com/download/win>.
-- **Build tools — usually NOT needed.** The one native module (SQLite) installs a prebuilt binary on most machines. **Only if** `npm install` fails with a `node-gyp` / `MSB` / C++ error, install the **Visual Studio Build Tools** (the *"Desktop development with C++"* workload) from <https://visualstudio.microsoft.com/visual-studio-build-tools/>, reopen your terminal, and retry.
+- **Build tools — usually NOT needed.** The one native module (SQLite) installs a prebuilt binary on most machines. **Only if** `npm install` fails with a `node-gyp` / `MSB` / C++ error, install the **Visual Studio Build Tools** (the *"Desktop development with C++"* workload) from <https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022>, reopen your terminal, and retry.
 - **~1.5 GB free disk.**
 
 ### Get the source & run
