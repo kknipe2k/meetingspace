@@ -33,6 +33,7 @@ export interface InFlightRegistry {
     sessionId: string;
     kind: GenKind;
     userFacing?: boolean;
+    templateName?: string;
   }): GenStatus;
   /** Record the latest step for a run (so a reattaching renderer shows "Section 3 of 7"). */
   setProgress(requestId: string, progress: GenProgress): void;
@@ -48,8 +49,15 @@ export interface InFlightRegistry {
 export function createInFlightRegistry(now: Clock = Date.now): InFlightRegistry {
   const runs = new Map<string, RegisteredRun>();
   return {
-    start({ requestId, sessionId, kind, userFacing = true }) {
-      const status: GenStatus = { requestId, sessionId, kind, progress: null, startedAt: now() };
+    start({ requestId, sessionId, kind, userFacing = true, templateName }) {
+      const status: GenStatus = {
+        requestId,
+        sessionId,
+        kind,
+        progress: null,
+        startedAt: now(),
+        ...(templateName !== undefined ? { templateName } : {}),
+      };
       runs.set(requestId, { status, userFacing });
       return status;
     },

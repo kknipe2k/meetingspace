@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { injectFontFaces } from '@shared/fonts/font-faces';
 import { DEFAULT_GENERATION_MODEL, modelLabel } from '@shared/models';
+import type { GenTemplate } from '@shared/types';
 
 import { docIdentityKey } from '../gen/doc-key';
 import { buildExportHtml, stripRemoteRefs } from '../gen/export-html';
@@ -15,7 +16,7 @@ import { useToasts } from '../hooks/useToasts';
 import { genClient, type GenClient } from '../ipc/client';
 
 import { ModelPicker } from './ModelPicker';
-import { PromptTemplateEditor } from './PromptTemplateEditor';
+import { PromptTemplateEditor, type PromptTemplateEditorHandle } from './PromptTemplateEditor';
 import { SandboxedHtmlFrame } from './SandboxedHtmlFrame';
 
 // The default (shipped) prompt template id — the read-only seed (M04.A).
@@ -96,8 +97,29 @@ export function GeneratedDocView({
   const [showEditor, setShowEditor] = useState(false);
   const [model, setModel] = useState<string>(generationModel ?? DEFAULT_GENERATION_MODEL);
   const [exporting, setExporting] = useState(false);
+  // Template list for the doc's template chip (resolves a doc's templateId → name).
+  const [templates, setTemplates] = useState<GenTemplate[]>([]);
+  // Imperative handle to the editor so a run routes through its unsaved-edits guard.
+  const editorRef = useRef<PromptTemplateEditorHandle>(null);
 
   const gen = useMemo(() => client ?? genClient, [client]);
+
+  // Keep the template list fresh: on open, on selection change, and when the editor
+  // closes (a save/rename may have changed a name).
+  useEffect(() => {
+    let active = true;
+    void gen.listTemplates().then((list) => {
+      if (active) {
+        setTemplates(list);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [gen, templateId, showEditor]);
+
+  const templateNameFor = (id: string | null): string | null =>
+    id === null ? null : (templates.find((t) => t.id === id)?.name ?? null);
 
   // The committed doc for the mode being shown (each mode keeps its own — switching
   // never blanks another mode's result).
@@ -150,11 +172,30 @@ export function GeneratedDocView({
   const runParams = (): { mode: GenMode; model?: string; templateId?: string } => ({
     mode,
     ...(mode !== 'raw' ? { model } : {}),
-    ...(mode === 'whitepaper' ? { templateId } : {}),
+    // Both whitepaper and minutes are template-driven now (minutes gained an editable
+    // prompt); raw assembles notes main-side and uses no template.
+    ...(mode !== 'raw' ? { templateId } : {}),
   });
 
-  const start = (): void => generate(runParams());
-  const reanalyze = (): void => startOver(runParams());
+  // A run first closes the open editor — through its unsaved-edits guard, so a dirty draft
+  // raises the Save/Discard/Keep-editing confirm and HOLDS the run until resolved ("Keep
+  // editing" cancels it). With the editor closed (or clean) the run starts immediately.
+  const runGen = (): void => generate(runParams());
+  const runReanalyze = (): void => startOver(runParams());
+  const start = (): void => {
+    if (showEditor && editorRef.current) {
+      editorRef.current.attemptClose(runGen);
+    } else {
+      runGen();
+    }
+  };
+  const reanalyze = (): void => {
+    if (showEditor && editorRef.current) {
+      editorRef.current.attemptClose(runReanalyze);
+    } else {
+      runReanalyze();
+    }
+  };
 
   // Sanitize the COMMITTED doc, then STRIP REMOTE REFS, then inject the self-hosted fonts (after
   // sanitization, app-trusted). The in-app preview is TEXT-ONLY — screenshots ride the export.
@@ -251,7 +292,7 @@ export function GeneratedDocView({
           <ModelPicker model={model} onChange={handleModelChange} disabled={isStreaming} />
         )}
 
-        {mode === 'whitepaper' && (
+        {mode !== 'raw' && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -325,11 +366,13 @@ export function GeneratedDocView({
         </p>
       )}
 
-      {showEditor && mode === 'whitepaper' && (
+      {showEditor && mode !== 'raw' && (
         <PromptTemplateEditor
+          ref={editorRef}
           {...(client ? { client } : {})}
           selectedTemplateId={templateId}
           onSelectTemplate={setTemplateId}
+          onClose={() => setShowEditor(false)}
         />
       )}
 
@@ -341,11 +384,18 @@ export function GeneratedDocView({
         </p>
       )}
 
-      {ranModel !== null && !isStreaming && (
+      {showDoc && (ranModel !== null || templateNameFor(current.templateId) !== null) && (
         <div className="generated-doc-meta">
-          <span className="generated-doc-badge" data-testid="model-badge">
-            {modelLabel(ranModel)}
-          </span>
+          {ranModel !== null && (
+            <span className="generated-doc-badge" data-testid="model-badge">
+              {modelLabel(ranModel)}
+            </span>
+          )}
+          {templateNameFor(current.templateId) !== null && (
+            <span className="generated-doc-badge" data-testid="template-badge">
+              {templateNameFor(current.templateId)}
+            </span>
+          )}
         </div>
       )}
 

@@ -252,6 +252,7 @@ export interface GenApi {
   exportPdf(request: ExportRequest): Promise<ExportResult>;
   listTemplates(): Promise<GenTemplate[]>;
   saveTemplate(parts: GenTemplateParts): Promise<GenTemplate>;
+  updateTemplate(id: string, parts: GenTemplateParts): Promise<GenTemplate>;
   getTemplate(id: string): Promise<GenTemplate | null>;
   deleteTemplate(id: string): Promise<void>;
   getArtifacts(sessionId: string): Promise<GenDocument[]>;

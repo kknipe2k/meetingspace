@@ -25,7 +25,7 @@ const RECEIVERS = '(client|gen|settings|noteClient|notes|storage)';
 // prefixes; each must be followed by `(` so `updateSync(` never matches `update`. M06.C adds the
 // export-PDF + backup/restore mutation sites.
 const METHODS =
-  '(deleteMany|addWithContent|saveTemplate|deleteTemplate|exportHtml|exportMarkdown|exportImages|exportPdf|setProvider|setPrefs|setKey|clearKey|reorder|restore|backup|create|rename|delete|update|add|save)';
+  '(deleteMany|addWithContent|saveTemplate|deleteTemplate|updateTemplate|exportHtml|exportMarkdown|exportImages|exportPdf|setProvider|setPrefs|setKey|clearKey|reorder|restore|backup|create|rename|delete|update|add|save)';
 // Allow whitespace/newlines around the dot so a fluent chain (`client\n  .update(...)`) can't
 // hide a mutation from the guard.
 function mutationRegex(): RegExp {
@@ -70,8 +70,9 @@ const REGISTRY: readonly string[] = [
   'components/GeneratedDocView.tsx gen.exportImages', // S
   'components/GeneratedDocView.tsx gen.exportHtml', // S
   'components/GeneratedDocView.tsx gen.exportPdf', // S (M06.C)
-  // PromptTemplateEditor — fork save/delete (F13, surfaced by the grep)
-  'components/PromptTemplateEditor.tsx client.saveTemplate', // S
+  // PromptTemplateEditor — preset create (New from default) / update-in-place / delete
+  'components/PromptTemplateEditor.tsx client.saveTemplate', // S (New from default)
+  'components/PromptTemplateEditor.tsx client.updateTemplate', // S (Save edits in place)
   'components/PromptTemplateEditor.tsx client.deleteTemplate', // S
   // SettingsModal — key/provider mutations
   'components/SettingsModal.tsx client.setProvider', // S (handleProviderChange → anthropic)

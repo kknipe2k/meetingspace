@@ -5,11 +5,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { GenApi, GenStreamCallbacks } from '@shared/api';
 import type {
+  GenArtifactSaved,
   GenDocument,
   GenDone,
   GenFocusRequest,
   GenMinutesRequest,
   GenProgress,
+  GenTemplate,
   GenWhitepaperRequest,
   LlmErrorPayload,
 } from '@shared/types';
@@ -37,6 +39,7 @@ interface Harness {
   emitDone(done?: Partial<GenDone>): void;
   emitError(code?: LlmErrorPayload['code']): void;
   lastWpRequest(): GenWhitepaperRequest | null;
+  lastMinutesRequest(): GenMinutesRequest | null;
   wpCalls(): number;
   minutesCalls(): number;
   rawCalls(): number;
@@ -46,13 +49,22 @@ interface Harness {
   lastExportHtml(): { content: string; defaultName: string } | null;
   lastExportMarkdown(): { content: string; defaultName: string } | null;
   lastExportPdf(): { content: string; defaultName: string } | null;
+  /** Swap what getLatestArtifacts returns (simulate a run persisting a new doc). */
+  setArtifacts(next: GenDocument[]): void;
+  /** Fire the session-scoped gen:artifact-saved broadcast (drives reloadSlot). */
+  emitArtifactSaved(event: GenArtifactSaved): void;
 }
 
-function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}): Harness {
-  const artifacts = opts.artifacts ?? [];
+function harness(
+  opts: { artifacts?: GenDocument[]; omittedCount?: number; templates?: GenTemplate[] } = {},
+): Harness {
+  let artifacts = opts.artifacts ?? [];
   const omittedCount = opts.omittedCount ?? 0;
+  const templates = opts.templates ?? [];
+  let savedListener: ((event: GenArtifactSaved) => void) | null = null;
   let current: GenStreamCallbacks | null = null;
   let wpReq: GenWhitepaperRequest | null = null;
+  let minutesReq: GenMinutesRequest | null = null;
   let wpCalls = 0;
   let minutesCalls = 0;
   let rawCalls = 0;
@@ -82,7 +94,8 @@ function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}
       wpCalls += 1;
       return handle();
     },
-    generateMinutes(_req: GenMinutesRequest, cbs) {
+    generateMinutes(req: GenMinutesRequest, cbs) {
+      minutesReq = req;
       current = cbs;
       minutesCalls += 1;
       return handle();
@@ -95,7 +108,12 @@ function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}
     },
     status: () => Promise.resolve(null),
     cancel: () => Promise.resolve(),
-    onArtifactSaved: () => () => undefined,
+    onArtifactSaved: (listener) => {
+      savedListener = listener;
+      return () => {
+        savedListener = null;
+      };
+    },
     onRunStarted: () => () => undefined,
     onRunEnded: () => () => undefined,
     onProgress: () => () => undefined,
@@ -123,8 +141,16 @@ function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}
       lastExportPdf = req;
       return Promise.resolve({ saved: true, path: '/tmp/out.pdf' });
     },
-    listTemplates: () => Promise.resolve([]),
+    listTemplates: () => Promise.resolve(templates),
     saveTemplate: () =>
+      Promise.resolve({
+        id: 't',
+        name: 'n',
+        focusPrompt: '',
+        whitepaperPrompt: '',
+        isDefault: false,
+      }),
+    updateTemplate: () =>
       Promise.resolve({
         id: 't',
         name: 'n',
@@ -162,6 +188,7 @@ function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}
         }),
       ),
     lastWpRequest: () => wpReq,
+    lastMinutesRequest: () => minutesReq,
     wpCalls: () => wpCalls,
     minutesCalls: () => minutesCalls,
     rawCalls: () => rawCalls,
@@ -171,6 +198,10 @@ function harness(opts: { artifacts?: GenDocument[]; omittedCount?: number } = {}
     lastExportHtml: () => lastExportHtml,
     lastExportMarkdown: () => lastExportMarkdown,
     lastExportPdf: () => lastExportPdf,
+    setArtifacts: (next) => {
+      artifacts = next;
+    },
+    emitArtifactSaved: (event) => act(() => savedListener?.(event)),
   };
 }
 
@@ -199,6 +230,56 @@ describe('GeneratedDocView', () => {
 
     expect(h.wpCalls()).toBe(1);
     expect(h.lastWpRequest()).toMatchObject({ sessionId: 's1' });
+  });
+
+  it('shows a template chip next to the model badge naming the template that produced the doc', async () => {
+    const h = harness({
+      artifacts: [
+        {
+          id: 'd1',
+          sessionId: 's1',
+          kind: 'whitepaper',
+          content: '<h1>Doc</h1>',
+          templateId: 'tmpl-1',
+          model: 'claude-opus-4-8',
+          createdAt: 1,
+        },
+      ],
+      templates: [
+        {
+          id: 'tmpl-1',
+          name: 'My template',
+          focusPrompt: '',
+          whitepaperPrompt: '',
+          isDefault: false,
+        },
+      ],
+    });
+    view(h);
+
+    expect(await screen.findByTestId('template-badge')).toHaveTextContent('My template');
+    expect(screen.getByTestId('model-badge')).toHaveTextContent('Claude Opus 4.8');
+  });
+
+  it('passes the active templateId on a minutes run (minutes is template-driven now)', async () => {
+    const h = harness();
+    view(h);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Minutes' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Generate minutes' }));
+
+    expect(h.minutesCalls()).toBe(1);
+    expect(h.lastMinutesRequest()).toMatchObject({ sessionId: 's1', templateId: 'default' });
+  });
+
+  it('offers the Edit prompt affordance in minutes mode, opening the editor with a minutes prompt field', async () => {
+    const h = harness();
+    view(h);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Minutes' }));
+    await userEvent.click(screen.getByRole('button', { name: /edit prompt/i }));
+
+    expect(await screen.findByLabelText(/minutes prompt/i)).toBeInTheDocument();
   });
 
   it('offers Retry on a transient TIMEOUT_CEILING and re-runs the SAME mode (M04.C cycle 2)', async () => {
@@ -617,5 +698,135 @@ describe('GeneratedDocView', () => {
       expect(docFrame()?.getAttribute('srcdoc') ?? '').toContain('Reloaded paper'),
     );
     expect(screen.getByTestId('model-badge')).toHaveTextContent('Claude Sonnet 4.6');
+  });
+
+  // --- A run closes the editor through its unsaved-edits guard (issue: warn before close) ---
+
+  const TEMPLATES: GenTemplate[] = [
+    {
+      id: 'default',
+      name: 'Default',
+      focusPrompt: 'D-FOCUS',
+      whitepaperPrompt: 'D-WP',
+      isDefault: true,
+    },
+    {
+      id: 'tmpl-1',
+      name: 'My template',
+      focusPrompt: 'F-FOCUS',
+      whitepaperPrompt: 'F-WP',
+      isDefault: false,
+    },
+  ];
+
+  it('Generate collapses an open (clean) editor and starts the run', async () => {
+    const h = harness({ templates: TEMPLATES });
+    view(h);
+
+    await userEvent.click(screen.getByRole('button', { name: /edit prompt/i }));
+    expect(await screen.findByLabelText(/focus prompt/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', GENERATE));
+
+    expect(h.wpCalls()).toBe(1);
+    expect(screen.queryByLabelText(/focus prompt/i)).toBeNull(); // editor collapsed
+  });
+
+  it('Generate with unsaved prompt edits HOLDS the run behind the warning; Keep editing cancels it', async () => {
+    const h = harness({ templates: TEMPLATES });
+    view(h);
+
+    await userEvent.click(screen.getByRole('button', { name: /edit prompt/i }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /template/i }), 'tmpl-1');
+    const focus = (await screen.findByLabelText(/focus prompt/i)) as HTMLTextAreaElement;
+    await waitFor(() => expect(focus).toHaveValue('F-FOCUS'));
+    await userEvent.type(focus, ' edit'); // dirty
+
+    await userEvent.click(screen.getByRole('button', GENERATE));
+
+    // The run is held — the confirm is shown and nothing generated yet.
+    expect(screen.getByRole('alertdialog', { name: /unsaved/i })).toBeInTheDocument();
+    expect(h.wpCalls()).toBe(0);
+
+    await userEvent.click(screen.getByRole('button', { name: /keep editing/i }));
+    expect(h.wpCalls()).toBe(0); // run cancelled by "Keep editing"
+    expect(screen.getByLabelText(/focus prompt/i)).toBeInTheDocument(); // editor still open
+  });
+
+  it('Discard & close from a Generate-triggered warning closes the editor and starts the run', async () => {
+    const h = harness({ templates: TEMPLATES });
+    view(h);
+
+    await userEvent.click(screen.getByRole('button', { name: /edit prompt/i }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /template/i }), 'tmpl-1');
+    const focus = (await screen.findByLabelText(/focus prompt/i)) as HTMLTextAreaElement;
+    await waitFor(() => expect(focus).toHaveValue('F-FOCUS'));
+    await userEvent.type(focus, ' edit'); // dirty
+
+    await userEvent.click(screen.getByRole('button', GENERATE));
+    await userEvent.click(screen.getByRole('button', { name: /discard & close/i }));
+
+    expect(h.wpCalls()).toBe(1);
+    expect(screen.queryByLabelText(/focus prompt/i)).toBeNull(); // editor collapsed
+  });
+
+  // --- Cancel reverts the doc + template chip to the last committed state (issue 3) ---
+
+  const OLD_DOC: GenDocument = {
+    id: 'd1',
+    sessionId: 's1',
+    kind: 'whitepaper',
+    content: '<html><body><h1>OLD</h1></body></html>',
+    templateId: 'default',
+    model: 'claude-opus-4-8',
+    createdAt: 1,
+  };
+  const NEW_DOC: GenDocument = {
+    id: 'd2',
+    sessionId: 's1',
+    kind: 'whitepaper',
+    content: '<html><body><h1>NEW</h1></body></html>',
+    templateId: 'tmpl-1',
+    model: 'claude-opus-4-8',
+    createdAt: 2,
+  };
+
+  it('reverts the doc + template chip to the last committed state when a regenerate is cancelled', async () => {
+    const h = harness({ artifacts: [OLD_DOC], templates: TEMPLATES });
+    view(h);
+    expect(await screen.findByTestId('template-badge')).toHaveTextContent('Default');
+
+    // Regenerate starts a run (snapshot of the committed slot is taken).
+    await userEvent.click(screen.getByRole('button', { name: /^regenerate$/i }));
+
+    // A late save for the just-started run lands and is adopted into the slot...
+    h.setArtifacts([NEW_DOC]);
+    h.emitArtifactSaved({ sessionId: 's1', kind: 'whitepaper', id: 'd2' });
+    await flushInline();
+
+    // ...but the user cancels — the shown doc + chip must revert to the last committed.
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    await flushInline();
+
+    expect(screen.getByTestId('template-badge')).toHaveTextContent('Default');
+    expect(docFrame()?.getAttribute('srcdoc') ?? '').toContain('OLD');
+  });
+
+  it('ignores a late artifact-save for a run the user already cancelled', async () => {
+    const h = harness({ artifacts: [OLD_DOC], templates: TEMPLATES });
+    view(h);
+    expect(await screen.findByTestId('template-badge')).toHaveTextContent('Default');
+
+    await userEvent.click(screen.getByRole('button', { name: /^regenerate$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    await flushInline();
+
+    // The abandoned run's save arrives AFTER the cancel — it must not be adopted.
+    h.setArtifacts([NEW_DOC]);
+    h.emitArtifactSaved({ sessionId: 's1', kind: 'whitepaper', id: 'd2' });
+    await flushInline();
+
+    expect(screen.getByTestId('template-badge')).toHaveTextContent('Default');
+    expect(docFrame()?.getAttribute('srcdoc') ?? '').toContain('OLD');
   });
 });

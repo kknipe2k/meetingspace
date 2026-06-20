@@ -71,7 +71,11 @@ describe('Modal focus-trap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'first' }));
     expect(onClose).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId('test-scrim'));
+    // A real backdrop click = press AND release on the scrim (the press-started guard
+    // ignores text-drags that merely release on the scrim).
+    const scrim = screen.getByTestId('test-scrim');
+    fireEvent.mouseDown(scrim);
+    fireEvent.click(scrim);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

@@ -342,11 +342,14 @@ export interface GenTemplate {
   readonly planPrompt?: string;
   readonly cssPrompt?: string;
   readonly htmlPrompt?: string;
+  // The minutes generation system prompt — editable like the white-paper parts; absent
+  // (older forks) → the factory MINUTES_PROMPT at run time.
+  readonly minutesPrompt?: string;
   readonly isDefault: boolean;
 }
 
-// The editable parts a user supplies when forking a template. The pipeline parts are
-// optional (absent → factory default), mirroring GenTemplate.
+// The editable parts a user supplies when forking a template. The pipeline + minutes
+// parts are optional (absent → factory default), mirroring GenTemplate.
 export interface GenTemplateParts {
   readonly name: string;
   readonly focusPrompt: string;
@@ -354,6 +357,7 @@ export interface GenTemplateParts {
   readonly planPrompt?: string;
   readonly cssPrompt?: string;
   readonly htmlPrompt?: string;
+  readonly minutesPrompt?: string;
 }
 
 // A persisted generated artifact (FOCUS doc in M04.A; whitepaper / minutes / raw
@@ -394,12 +398,13 @@ export interface GenWhitepaperRequest {
 }
 
 // The renderer -> main structured-minutes request (M04.C). Like the white-paper
-// request it NEVER carries the key; the corpus is assembled MAIN-SIDE. Minutes run
-// a single SDK call over a fixed v1 prompt, so there is no templateId — only the
-// session handle and the chosen model.
+// request it NEVER carries the key; the corpus is assembled MAIN-SIDE. Minutes run a
+// single SDK call; `templateId` selects the (editable) minutes prompt — absent → the
+// factory default — so minutes is now a peer of the white paper in the template system.
 export interface GenMinutesRequest {
   readonly sessionId: string;
   readonly model?: string;
+  readonly templateId?: string;
 }
 
 // Terminal success payload of a generation stream — stop reason + usage + the
@@ -426,6 +431,9 @@ export interface GenStatus {
   readonly kind: GenKind;
   readonly progress: GenProgress | null;
   readonly startedAt: number;
+  // The name of the template driving this run (e.g. "Default" or a user template), so
+  // the run toast can show which prompt is in effect. Absent for the internal focus leg.
+  readonly templateName?: string;
 }
 
 // The typed resolution of a generate invoke (M07.C; product-owner scope amendment).

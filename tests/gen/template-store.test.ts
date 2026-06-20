@@ -68,6 +68,41 @@ describe('TemplateStore', () => {
     expect(onDisk).toContain('tmpl-1');
   });
 
+  it('updates an existing fork in place (same id, new name + prompts)', () => {
+    const store = new TemplateStore(filePath, () => 'tmpl-1');
+    store.saveTemplate(PARTS);
+
+    const updated = store.updateTemplate('tmpl-1', {
+      name: 'Renamed Paper',
+      focusPrompt: 'edited focus',
+      whitepaperPrompt: 'edited whitepaper',
+    });
+
+    expect(updated).toMatchObject({
+      id: 'tmpl-1',
+      name: 'Renamed Paper',
+      focusPrompt: 'edited focus',
+      whitepaperPrompt: 'edited whitepaper',
+      isDefault: false,
+    });
+    expect(store.getTemplate('tmpl-1')).toEqual(updated);
+  });
+
+  it('refuses to update the immutable default seed', () => {
+    const store = new TemplateStore(filePath, () => 'tmpl-1');
+
+    expect(() => store.updateTemplate(SEED_TEMPLATE_ID, PARTS)).toThrow(
+      'Unknown template: ' + SEED_TEMPLATE_ID,
+    );
+    expect(store.getTemplate(SEED_TEMPLATE_ID)?.isDefault).toBe(true);
+  });
+
+  it('throws when updating a non-existent fork id', () => {
+    const store = new TemplateStore(filePath, () => 'tmpl-1');
+
+    expect(() => store.updateTemplate('nope', PARTS)).toThrow('Unknown template: nope');
+  });
+
   it('deletes a fork but leaves the immutable default seed intact', () => {
     const store = new TemplateStore(filePath, () => 'tmpl-1');
     store.saveTemplate(PARTS);

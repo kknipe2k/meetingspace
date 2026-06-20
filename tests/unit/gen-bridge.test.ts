@@ -79,6 +79,7 @@ describe('createGenApi', () => {
         'exportPdf',
         'listTemplates',
         'saveTemplate',
+        'updateTemplate',
         'getTemplate',
         'deleteTemplate',
         'getArtifacts',

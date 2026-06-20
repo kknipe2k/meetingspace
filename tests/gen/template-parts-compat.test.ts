@@ -17,6 +17,7 @@ import {
   CSS_PROMPT,
   DEFAULT_TEMPLATE,
   HTML_PROMPT,
+  MINUTES_PROMPT,
   PLAN_PROMPT,
 } from '../../electron/gen/prompt-templates';
 import { TemplateStore } from '../../electron/gen/template-store';
@@ -136,6 +137,7 @@ describe('factory prompt parts', () => {
     expect(DEFAULT_TEMPLATE.planPrompt).toBe(PLAN_PROMPT);
     expect(DEFAULT_TEMPLATE.cssPrompt).toBe(CSS_PROMPT);
     expect(DEFAULT_TEMPLATE.htmlPrompt).toBe(HTML_PROMPT);
+    expect(DEFAULT_TEMPLATE.minutesPrompt).toBe(MINUTES_PROMPT);
   });
 });
 
@@ -151,12 +153,20 @@ describe('v1 fork compat (TemplateStore)', () => {
 
   it('loads a fork that DOES carry the new optional parts', () => {
     const store = forkFileWith([
-      { ...V1_FORK, id: 'fork-v2', planPrompt: 'P2', cssPrompt: 'C2', htmlPrompt: 'H2' },
+      {
+        ...V1_FORK,
+        id: 'fork-v2',
+        planPrompt: 'P2',
+        cssPrompt: 'C2',
+        htmlPrompt: 'H2',
+        minutesPrompt: 'M2',
+      },
     ]);
     expect(store.getTemplate('fork-v2')).toMatchObject({
       planPrompt: 'P2',
       cssPrompt: 'C2',
       htmlPrompt: 'H2',
+      minutesPrompt: 'M2',
     });
   });
 });
