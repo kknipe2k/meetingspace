@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import testingLibrary from 'eslint-plugin-testing-library';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -68,6 +69,20 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    // Async-correctness gate for the React Testing Library suites (the flake-prevention rules
+    // only — NOT the full testing-library recommended set, which would force a broad unrelated
+    // cleanup). Scoped to the RTL suites (components + hooks): other dirs (e.g. tests/electron)
+    // define their own non-RTL `findBy*` helpers the name-matching rules would false-positive on.
+    files: ['tests/components/**/*.{ts,tsx}', 'tests/hooks/**/*.{ts,tsx}'],
+    plugins: { 'testing-library': testingLibrary },
+    rules: {
+      'testing-library/await-async-queries': 'error',
+      'testing-library/await-async-utils': 'error',
+      'testing-library/no-await-sync-queries': 'error',
+      'testing-library/prefer-find-by': 'error',
     },
   },
   prettier,

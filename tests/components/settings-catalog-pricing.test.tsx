@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SettingsApi, UsageApi } from '@shared/api';
@@ -64,7 +64,7 @@ describe('SettingsModal — config pricing + WP cap', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Config Only Model')).toBeInTheDocument());
+    expect(await screen.findByText('Config Only Model')).toBeInTheDocument();
     expect(screen.getByText(/\$7 \/ \$21/)).toBeInTheDocument();
   });
 

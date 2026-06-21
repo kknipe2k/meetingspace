@@ -169,7 +169,7 @@ describe('Screenshots', () => {
     await waitFor(() => expect(thumbs()).toHaveLength(1));
 
     fireEvent.click(screen.getByRole('button', { name: 'Capture screen' }));
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Entire screen' }));
 
@@ -188,7 +188,7 @@ describe('Screenshots', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Capture screen' }));
 
-    await waitFor(() => expect(screen.getByText(/screen recording/i)).toBeInTheDocument());
+    expect(await screen.findByText(/screen recording/i)).toBeInTheDocument();
     expect(capture.grabbed).toEqual([]);
     expect(fake.saves).toEqual([]);
   });

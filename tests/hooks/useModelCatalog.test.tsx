@@ -42,10 +42,10 @@ describe('useModelCatalog', () => {
     render(<Harness client={client} />);
 
     // Static seed is present immediately (never empty), then the live list lands.
-    await waitFor(() => expect(screen.getByText('Live One')).toBeInTheDocument());
+    expect(await screen.findByText('Live One')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'refresh' }));
-    await waitFor(() => expect(screen.getByText('Live Two')).toBeInTheDocument());
+    expect(await screen.findByText('Live Two')).toBeInTheDocument();
     expect(client.refresh).toHaveBeenCalledTimes(1);
   });
 
