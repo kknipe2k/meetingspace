@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -76,8 +76,8 @@ describe('LLMPanel — white paper entry point', () => {
     expect(dialog).toBeInTheDocument();
     // The modal hosts GeneratedDocView with its manual Generate gate (M07.B: opening never
     // starts a run).
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /generate white paper/i })).toBeInTheDocument(),
-    );
+    expect(
+      await screen.findByRole('button', { name: /generate white paper/i }),
+    ).toBeInTheDocument();
   });
 });

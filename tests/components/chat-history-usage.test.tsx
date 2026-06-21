@@ -71,7 +71,7 @@ describe('ChatPanel — persisted history + usage counter', () => {
       <ChatPanel sessionId="s1" client={llmClient(THREAD)} usageClient={usageClient(SUMMARY)} />,
     );
 
-    await waitFor(() => expect(screen.getByText('When did we ship?')).toBeInTheDocument());
+    expect(await screen.findByText('When did we ship?')).toBeInTheDocument();
     expect(screen.getByText('We shipped Friday.')).toBeInTheDocument();
   });
 
