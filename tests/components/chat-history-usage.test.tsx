@@ -83,11 +83,15 @@ describe('ChatPanel — persisted history + usage counter', () => {
     // The ADR-0024 relabel: per-session today + all-sessions today (no all-time total row).
     expect(sessionRow).toHaveTextContent('This session · today');
     expect(allRow).toHaveTextContent('All sessions · today');
+    // The rows mount with a zeroed seed (useUsageCounter) and fill once usage.summary()
+    // resolves — await the loaded numbers rather than racing the placeholder render.
     // Tokens abbreviated with a k/M suffix (1–3 sig figs): 1200 → 1.2k, 340 → 340, 5600 → 5.6k.
-    expect(sessionRow).toHaveTextContent('1.2k in · 340 out');
-    expect(allRow).toHaveTextContent('5.6k in');
-    // Cost as a dollar amount.
-    expect(sessionRow).toHaveTextContent(/\$0\.01/);
+    await waitFor(() => {
+      expect(sessionRow).toHaveTextContent('1.2k in · 340 out');
+      expect(allRow).toHaveTextContent('5.6k in');
+      // Cost as a dollar amount.
+      expect(sessionRow).toHaveTextContent(/\$0\.01/);
+    });
     // The dropped all-time "Total" row is gone.
     expect(screen.queryByTestId('chat-usage-total')).toBeNull();
   });
@@ -115,8 +119,11 @@ describe('ChatPanel — persisted history + usage counter', () => {
 
     const sessionRow = await screen.findByTestId('chat-usage-session-today');
     const allRow = screen.getByTestId('chat-usage-all-today');
-    expect(sessionRow).toHaveTextContent('1.2M in · 12.3k out · cost unknown');
-    expect(allRow).toHaveTextContent('999 in · 1k out · $0.04 +1 unpriced');
+    // Await the async-loaded totals (the rows render first with the zeroed seed).
+    await waitFor(() => {
+      expect(sessionRow).toHaveTextContent('1.2M in · 12.3k out · cost unknown');
+      expect(allRow).toHaveTextContent('999 in · 1k out · $0.04 +1 unpriced');
+    });
   });
 
   it('queries the counter with the OPEN sessionId (ADR-0024 — session-aware again)', async () => {
