@@ -322,7 +322,7 @@ export function SettingsModal({
               spellCheck={false}
             />
             <label className="settings-field-label" htmlFor="gateway-proxy">
-              Proxy URL (optional)
+              Proxy URL (advanced — usually leave blank)
             </label>
             <input
               id="gateway-proxy"
@@ -335,8 +335,9 @@ export function SettingsModal({
               spellCheck={false}
             />
             <p className="settings-help">
-              Optional. If your network needs a specific proxy to reach the gateway, enter it here;
-              otherwise your system proxy is used automatically.
+              Leave blank to use your system proxy — that works on most managed corporate machines.
+              Only enter a proxy here if Test connection fails while this is blank (e.g. a machine
+              with no system proxy configured); a value here overrides your system proxy.
             </p>
           </>
         )}
