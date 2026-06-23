@@ -47,7 +47,7 @@ jobs:
       - name: Dependency audit (production deps)
         run: npm run audit
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           # gitleaks-action@v2 requires GITHUB_TOKEN to scan pull_request events
           # (it calls the GitHub API to read PR commits / comment). Push events run
