@@ -2,6 +2,11 @@
 
 Notable changes, newest first.
 
+## 1.2.2 — 2026-06-23
+
+- **Gateway security:** gateway base URLs now require HTTPS by default. Plain HTTP is accepted only for localhost, or via an explicit advanced override (`MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP=1`) for an internal corporate HTTP gateway behind a trusted network — so the bearer token is never sent over cleartext by default.
+- **Supply chain:** CI and release GitHub Actions are pinned to commit SHAs, with Dependabot keeping them current.
+
 ## 1.2.1 — 2026-06-23
 
 - **Corporate gateway:** connect through a corporate AWS Bedrock gateway that sits behind your company's HTTP proxy. Claude calls now follow the OS system proxy (including PAC/WPAD auto-config), with enterprise proxy authentication and the OS certificate store handled for you. An optional explicit proxy URL is available for unusual setups (normally leave it blank).
