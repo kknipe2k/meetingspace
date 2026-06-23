@@ -23,7 +23,7 @@ import {
  * provider never crashes — toasts simply don't render); ToastProvider supplies the real
  * stateful api, and ToastHost renders the list.
  */
-export type ToastVariant = 'info' | 'progress' | 'error';
+export type ToastVariant = 'info' | 'progress' | 'warning' | 'error';
 
 export interface ToastInput {
   /** Replace-by-key: a second show() with the same key updates the toast in place. */

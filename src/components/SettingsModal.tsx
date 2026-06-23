@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
-import type { KeyStatus, PricingEntry, ProviderConfig, ProviderId } from '@shared/types';
+import type {
+  GatewayPingResult,
+  KeyStatus,
+  PricingEntry,
+  ProviderConfig,
+  ProviderId,
+} from '@shared/types';
 
 import { useMutationToast } from '../hooks/useMutationToast';
 import { useToasts } from '../hooks/useToasts';
 import {
+  catalogClient,
   storageClient,
   usageClient as defaultUsageClient,
   type SettingsClient,
@@ -24,6 +31,9 @@ export interface SettingsModalProps {
   usageClient?: UsageClient;
   onClose(): void;
 }
+
+// Test-connection state: a testing-in-flight marker, then the typed ping result.
+type PingState = { readonly testing: true } | GatewayPingResult;
 
 /*
  * The settings surface (M03.A; M07.D adds the provider switch). Enter the credential for the
@@ -46,6 +56,8 @@ export function SettingsModal({
 }: SettingsModalProps): ReactElement {
   const [provider, setProvider] = useState<ProviderId>('anthropic');
   const [gatewayUrl, setGatewayUrl] = useState('');
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [pingResult, setPingResult] = useState<PingState | null>(null);
   const [status, setStatus] = useState<KeyStatus | null>(null);
   const [draft, setDraft] = useState('');
   const [providerError, setProviderError] = useState<string | null>(null);
@@ -87,6 +99,7 @@ export function SettingsModal({
       setProvider(config.provider);
       if (config.provider === 'gateway') {
         setGatewayUrl(config.baseURL);
+        setProxyUrl(config.proxyUrl ?? '');
       }
       setStatus(await client.keyStatus(config.provider));
     })();
@@ -109,12 +122,17 @@ export function SettingsModal({
       setProvider(next);
       setDraft('');
       setProviderError(null);
+      setPingResult(null);
+      setProxyUrl('');
       if (next === 'anthropic') {
         await surface(
           () => client.setProvider({ provider: 'anthropic' }),
           "Couldn't switch provider.",
         );
       }
+      // The model catalog is provider-scoped (gateway serves a fixed set); invalidate the
+      // main-process cache so the picker reflects the active provider on its next read.
+      void catalogClient.refresh();
       await refresh(next);
     },
     [client, refresh, surface],
@@ -126,19 +144,36 @@ export function SettingsModal({
     }
     setProviderError(null);
     if (provider === 'gateway') {
-      // Persist the (validated main-side) provider config first; a bad URL throws and is
-      // surfaced here — the token is NOT sent until the gateway is configured.
+      // Persist the (main-side validated) provider config first; the token is NOT sent until the
+      // gateway is configured. An http non-localhost save succeeds but raises a non-blocking warning.
       try {
-        const saved: ProviderConfig = await client.setProvider({
+        const saved2: ProviderConfig = await client.setProvider({
           provider: 'gateway',
           baseURL: gatewayUrl,
+          ...(proxyUrl ? { proxyUrl } : {}),
         });
-        if (saved.provider === 'gateway') {
-          setGatewayUrl(saved.baseURL);
+        if (saved2.provider === 'gateway') {
+          setGatewayUrl(saved2.baseURL);
+        }
+        // Provider-scoped model cache: refresh so the picker shows the gateway's fixed set.
+        void catalogClient.refresh();
+        try {
+          const parsedUrl = new URL(gatewayUrl);
+          const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+          if (parsedUrl.protocol === 'http:' && !loopbackHosts.has(parsedUrl.hostname)) {
+            show({
+              variant: 'warning',
+              message:
+                'Gateway saved using HTTP (not HTTPS). Ensure you are on a trusted network or VPN.',
+              durationMs: 8000,
+            });
+          }
+        } catch {
+          /* non-URL: skip the HTTP warning */
         }
       } catch {
         setProviderError(
-          'The gateway URL must be https (http is allowed only for localhost). It was not saved.',
+          'The gateway URL could not be saved. Ensure the URL is valid (http:// or https://).',
         );
         return;
       }
@@ -153,7 +188,7 @@ export function SettingsModal({
     // Drop the plaintext from renderer state the moment it is handed off.
     setDraft('');
     await refresh(provider);
-  }, [client, draft, encryptionAvailable, gatewayUrl, provider, refresh, surface]);
+  }, [client, draft, encryptionAvailable, gatewayUrl, proxyUrl, provider, refresh, show, surface]);
 
   const handleClear = useCallback(async (): Promise<void> => {
     const ok = await surface(
@@ -165,6 +200,17 @@ export function SettingsModal({
     }
     await refresh(provider);
   }, [client, provider, refresh, surface]);
+
+  // Test connection (gateway): a one-shot ping surfacing the auth + routing result inline.
+  const handlePing = useCallback(async (): Promise<void> => {
+    setPingResult({ testing: true });
+    try {
+      const result = await client.pingGateway();
+      setPingResult(result);
+    } catch {
+      setPingResult({ ok: false, error: 'Ping failed — check console for details.' });
+    }
+  }, [client]);
 
   // Full backup (M06.C): export the whole store to one portable file. A cancelled save dialog is
   // silent; a success confirms the path. Errors route through surface().
@@ -275,6 +321,23 @@ export function SettingsModal({
               autoComplete="off"
               spellCheck={false}
             />
+            <label className="settings-field-label" htmlFor="gateway-proxy">
+              Proxy URL (optional)
+            </label>
+            <input
+              id="gateway-proxy"
+              className="settings-key-input"
+              type="text"
+              value={proxyUrl}
+              onChange={(event) => setProxyUrl(event.target.value)}
+              placeholder="http://proxy.corp.example.com:8080"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="settings-help">
+              Optional. If your network needs a specific proxy to reach the gateway, enter it here;
+              otherwise your system proxy is used automatically.
+            </p>
           </>
         )}
 
@@ -312,7 +375,29 @@ export function SettingsModal({
               {isGateway ? 'Clear token' : 'Clear key'}
             </button>
           )}
+          {isGateway && hasKey && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handlePing()}
+              disabled={pingResult !== null && 'testing' in pingResult}
+            >
+              {pingResult !== null && 'testing' in pingResult ? 'Testing…' : 'Test connection'}
+            </button>
+          )}
         </div>
+
+        {isGateway && pingResult !== null && !('testing' in pingResult) && (
+          <p
+            className={pingResult.ok ? 'settings-help' : 'settings-error'}
+            data-testid="settings-ping-result"
+            role="status"
+          >
+            {pingResult.ok
+              ? '✓ Gateway reachable — Haiku responded successfully.'
+              : `✗ ${pingResult.error}`}
+          </p>
+        )}
       </section>
 
       <section className="settings-section" data-testid="settings-spend-guidance">

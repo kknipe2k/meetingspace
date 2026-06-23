@@ -21,8 +21,9 @@ import { mapAnthropicError } from './errors';
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
-// The gateway baseURL must be https EXCEPT for loopback (localhost dev gateways) — a
-// plaintext token over http to a remote host is a Hard Rule §4.10 cleartext leak.
+// Accept any https:// or http:// gateway URL. Corporate Bedrock gateways commonly expose an internal
+// HTTP endpoint (TLS terminates at the network edge); the security signal for non-local HTTP is a
+// non-blocking renderer toast (isHttpNonLocalGatewayUrl), not a hard block.
 export function isAllowedGatewayUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -30,13 +31,21 @@ export function isAllowedGatewayUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (parsed.protocol === 'https:') {
+  if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
     return true;
   }
-  if (parsed.protocol === 'http:') {
-    return LOOPBACK_HOSTS.has(parsed.hostname);
-  }
   return false;
+}
+
+// Companion helper for the renderer's non-blocking HTTP warning: true for an http:// URL whose host
+// is NOT loopback (the save still proceeds).
+export function isHttpNonLocalGatewayUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' && !LOOPBACK_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 // Map the active provider + the per-call credential to the SDK client options (M06.D — single

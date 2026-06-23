@@ -89,6 +89,8 @@ export const SETTINGS_CHANNELS = {
   // no key/token ever crosses back (keyStatus is booleans only).
   getProvider: 'settings:getProvider',
   setProvider: 'settings:setProvider',
+  // M07.D follow-up: one-shot gateway connectivity check (Test connection). Returns { ok, error }.
+  pingGateway: 'settings:pingGateway',
 } as const;
 
 export type SettingsChannel = (typeof SETTINGS_CHANNELS)[keyof typeof SETTINGS_CHANNELS];

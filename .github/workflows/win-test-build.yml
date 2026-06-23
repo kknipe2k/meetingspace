@@ -1,0 +1,45 @@
+# On-demand Windows portable-zip build for testing the gateway (net.fetch) branch.
+#
+# Builds ONLY the portable .zip on a windows-latest runner (native better-sqlite3 must be compiled
+# for Windows + Electron's ABI — not cross-buildable) and publishes it as a public PRE-RELEASE under
+# a fresh per-commit tag (immutable releases forbid reusing one tag), so it's anonymously
+# downloadable with no GitHub login. Throwaway helper — delete before merging.
+
+name: win-test-build
+
+on:
+  push:
+    branches:
+      - claude/gallant-cray-8lie9i
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  win-zip:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build renderer/main bundle
+        run: npm run build
+      - name: Package the portable Windows zip (no installer, no publish)
+        run: npx electron-builder --win zip --config electron-builder.yml --publish never
+      - name: Publish the zip as a public pre-release (anonymous download)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          tag="win-test-${GITHUB_SHA::7}"
+          gh release create "$tag" release/*.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Windows test build ${GITHUB_SHA::7} — gateway (net.fetch)" \
+            --notes "Unsigned portable Windows zip for testing the gateway net.fetch proxy path (branch claude/gallant-cray-8lie9i). Unpack and run MeetingSpace.exe (SmartScreen -> More info -> Run anyway). Throwaway test build."
+          echo "Download page: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"

@@ -88,6 +88,7 @@ export const settingsClient: SettingsClient = {
   setPrefs: (prefs) => window.api.settings.setPrefs(prefs),
   getProvider: () => window.api.settings.getProvider(),
   setProvider: (provider) => window.api.settings.setProvider(provider),
+  pingGateway: () => window.api.settings.pingGateway(),
 };
 
 // Chat is event-driven (streamed chunks); `chat` returns an unsubscribe. The

@@ -76,7 +76,9 @@ function asProviderConfig(value: unknown): ProviderConfig {
         'settings ipc: gateway baseURL must be https (http allowed only for localhost)',
       );
     }
-    return { provider: 'gateway', baseURL };
+    const proxyUrl =
+      typeof record.proxyUrl === 'string' && record.proxyUrl.length > 0 ? record.proxyUrl : null;
+    return { provider: 'gateway', baseURL, ...(proxyUrl ? { proxyUrl } : {}) };
   }
   throw new TypeError('settings ipc: provider must be "anthropic" or "gateway"');
 }

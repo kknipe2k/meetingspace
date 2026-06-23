@@ -12,6 +12,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  net,
   safeStorage,
   screen,
   session,
@@ -28,7 +29,7 @@ import { buildAppMenuTemplate, type AppMenuCommands } from './menu';
 import { buildContextMenuTemplate } from './context-menu';
 import { resolveWindowOptions } from './window-state';
 import { nextZoomFactor } from './zoom';
-import { APP_CHANNELS } from './ipc/channels';
+import { APP_CHANNELS, SETTINGS_CHANNELS } from './ipc/channels';
 import { ArtifactStore } from './gen/artifact-store';
 import type { CorpusImage } from './gen/corpus';
 import { createGenerationService } from './gen/generation-service';
@@ -595,11 +596,67 @@ app
     // the credential reader fetches the ACTIVE provider's secret (anthropic-key.enc vs
     // gateway-credential.enc). Both the chat AND generation services share this seam.
     const readProvider = () => prefsStore.get().provider ?? ({ provider: 'anthropic' } as const);
-    const providerClientFactory: AnthropicClientFactory = (options) =>
-      selectClientFactory(readProvider(), createAnthropicClient)(options);
     const providerKeyReader = {
       getKeyForMain: () => keyStore.getKeyForMain(readProvider().provider),
     };
+
+    // Gateway networking via Electron's Chromium stack (net.fetch). Unlike Node's fetch (minimal
+    // proxy support), net.fetch follows the OS proxy configuration (incl. PAC/WPAD) and supports
+    // Basic/Digest/NTLM/Kerberos/Negotiate proxy auth + the OS certificate store. We keep the default
+    // session's proxy in sync with the gateway's configured proxyUrl (system proxy when none set),
+    // then route the gateway SDK calls (chat, generation, ping) through net.fetch.
+    let appliedProxyRules: string | null = null;
+    const ensureGatewayProxy = async (): Promise<void> => {
+      const provider = readProvider();
+      const rules = provider.provider === 'gateway' && provider.proxyUrl ? provider.proxyUrl : '';
+      if (rules !== appliedProxyRules) {
+        appliedProxyRules = rules;
+        await session.defaultSession.setProxy(rules ? { proxyRules: rules } : { mode: 'system' });
+      }
+    };
+    const netFetch = ((input: unknown, init?: unknown) =>
+      ensureGatewayProxy().then(() =>
+        net.fetch(input as Parameters<typeof net.fetch>[0], init as Parameters<typeof net.fetch>[1]),
+      )) as unknown as typeof globalThis.fetch;
+    const providerClientFactory: AnthropicClientFactory = (options) => {
+      const provider = readProvider();
+      const withGatewayFetch =
+        provider.provider === 'gateway' ? { ...options, fetch: netFetch } : options;
+      return selectClientFactory(provider, createAnthropicClient)(withGatewayFetch);
+    };
+
+    // Gateway connectivity check (Settings ▸ Test connection). Routes through net.fetch like the
+    // chat/generation gateway calls, so it exercises the real proxy + auth + cert path.
+    registrar.handle(SETTINGS_CHANNELS.pingGateway, async () => {
+      const provider = readProvider();
+      if (provider.provider !== 'gateway') {
+        return { ok: false, error: 'Not configured as gateway provider.' };
+      }
+      const credential = providerKeyReader.getKeyForMain();
+      if (!credential) {
+        return { ok: false, error: 'No gateway token saved. Save a token first.' };
+      }
+      try {
+        const opts = providerSdkOptions(provider, credential);
+        const pingClient = new Anthropic({
+          apiKey: opts.apiKey,
+          ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
+          ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
+          maxRetries: 0,
+          fetch: netFetch,
+        });
+        await pingClient.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        });
+        return { ok: true };
+      } catch (error) {
+        const status = (error as { status?: number } | null)?.status;
+        const msg = (error as { message?: string } | null)?.message ?? String(error);
+        return { ok: false, error: status ? `HTTP ${status}: ${msg}` : msg };
+      }
+    });
 
     // M06.D persistence + counters. ChatStore persists the conversation (ADR-0020); the pricing
     // config drives cost (ADR-0021, updatable file); the UsageStore records real usage and rolls
@@ -615,9 +672,19 @@ app
     // network or a gateway without /v1/models degrades to the static list (never blocks the picker).
     // In FAKE_LLM mode the lister rejects so the catalog stays the deterministic static list (no
     // network in e2e). The model-aware generation cap reads the LIVE ceiling off this cache.
+    // The corporate gateway serves a KNOWN fixed set (no Opus) and typically has no /v1/models —
+    // return this explicit allowlist for the gateway provider instead of querying (1-H).
+    const GATEWAY_MODELS: CatalogModel[] = [
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', maxOutputTokens: 64e3 },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64e3 },
+    ];
     const listModels = async (): Promise<CatalogModel[]> => {
+      const provider = readProvider();
+      if (provider.provider === 'gateway') {
+        return GATEWAY_MODELS;
+      }
       const credential = providerKeyReader.getKeyForMain();
-      const opts = providerSdkOptions(readProvider(), credential);
+      const opts = providerSdkOptions(provider, credential);
       const client = new Anthropic({
         apiKey: opts.apiKey,
         ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
