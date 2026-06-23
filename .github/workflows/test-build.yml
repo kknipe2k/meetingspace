@@ -72,6 +72,9 @@ jobs:
       - name: Publish all artifacts as a public pre-release (anonymous download)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job does NOT checkout the repo, so gh can't infer it from a git remote — point it
+          # at the repo explicitly (OWNER/REPO) so `gh release create` targets the right place.
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           tag="test-${GITHUB_SHA::7}"
