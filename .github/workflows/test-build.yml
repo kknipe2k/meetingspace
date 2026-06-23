@@ -16,6 +16,12 @@ on:
 permissions:
   contents: write
 
+# A newer push supersedes an in-flight build (avoids two ~10-min builds racing to publish the
+# same fixed-tag pre-release).
+concurrency:
+  group: test-build
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -72,6 +78,9 @@ jobs:
       - name: Publish a PRERELEASE test build (never Latest, never main)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The publish job skips checkout (it only needs the built artifacts), so gh has no git
+          # remote to infer the repo from — point it explicitly or `gh release` fails.
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           tag="test-gateway-diagnostics"
