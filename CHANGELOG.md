@@ -2,6 +2,12 @@
 
 Notable changes, newest first.
 
+## 1.2.1 — 2026-06-23
+
+- **Corporate gateway:** connect through a corporate AWS Bedrock gateway that sits behind your company's HTTP proxy. Claude calls now follow the OS system proxy (including PAC/WPAD auto-config), with enterprise proxy authentication and the OS certificate store handled for you. An optional explicit proxy URL is available for unusual setups (normally leave it blank).
+- **Test connection:** a one-click connectivity check in Settings confirms the gateway is reachable before you start a chat or a generation.
+- **Gateway model list:** the model picker shows exactly the models your gateway serves (auto-discovered), and chat now sends the precise model id the gateway requires — fixing chat on Haiku through the gateway.
+
 ## 1.2.0 — 2026-06-20
 
 - **Editable minutes prompt:** the minutes generator now has its own editable prompt, alongside the white paper — adjust its structure and tone per template.
