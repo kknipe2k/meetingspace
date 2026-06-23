@@ -1,0 +1,97 @@
+# On-demand FULL multi-platform build of the gateway branch — mirrors the official Release artifact
+# set (release.yml + electron-builder.yml: Windows NSIS installer + portable zip; macOS arm64/x64
+# dmg + zip; plus electron-builder's updater metadata) but publishes everything to a FRESH per-commit
+# PRE-RELEASE tag (test-<sha>) so it's anonymously downloadable with no GitHub login and NEVER
+# collides with the real v1.2.0 release (immutable releases forbid reusing the v1.2.0 tag).
+#
+# Each OS builds on its own native runner (electron-builder can't cross-build a macOS .app, and
+# native better-sqlite3 must be compiled for each platform's Electron ABI — done at pack time), then
+# a final job gathers both runners' artifacts and publishes them to one pre-release.
+#
+# Throwaway helper — delete before merging.
+
+name: test-build
+
+on:
+  push:
+    branches:
+      - claude/gallant-cray-8lie9i
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # a macOS failure must not discard the Windows artifacts (and vice-versa)
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build renderer/main bundle
+        run: npm run build
+      - name: Package the distributables (no publish — gathered in the publish job)
+        run: npx electron-builder --${{ matrix.platform }} --config electron-builder.yml --publish never
+      - name: Collect the distributables (top-level files only — skip the unpacked dirs)
+        shell: bash
+        run: |
+          mkdir -p dist-out
+          # The user-facing installers/zips/dmgs + electron-builder's updater metadata; the
+          # -maxdepth 1 filter excludes the huge working dirs (win-unpacked, mac, mac-arm64).
+          find release -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
+            -exec cp {} dist-out/ \;
+          ls -la dist-out
+      - name: Upload this platform's artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          path: dist-out/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both platforms' artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish all artifacts as a public pre-release (anonymous download)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          tag="test-${GITHUB_SHA::7}"
+          mkdir -p upload
+          # Flatten the per-platform artifact dirs into one upload set (no name clashes: win →
+          # latest.yml, mac → latest-mac.yml; every installer/zip/dmg/blockmap is uniquely named).
+          find artifacts -type f -exec cp {} upload/ \;
+          ls -la upload
+          {
+            echo "Unsigned test build of the gateway branch (\`claude/gallant-cray-8lie9i\`), mirroring the v1.2.0 artifact set."
+            echo
+            echo "**Windows** — \`MeetingSpace-Setup-1.2.0.exe\` (installer) or \`MeetingSpace-1.2.0-win.zip\` (unzip & run). First launch: SmartScreen → More info → Run anyway (one-time, unsigned)."
+            echo "**macOS** — Apple Silicon: \`MeetingSpace-1.2.0-arm64.dmg\` · Intel: \`MeetingSpace-1.2.0-x64.dmg\` (or the matching \`.zip\`). First launch: right-click → Open (one-time, unsigned)."
+            echo "(Ignore \`latest*.yml\` / \`*.blockmap\` — auto-updater metadata, not downloads.)"
+            echo
+            echo "Throwaway test build of the gateway corp-proxy + model-id changes."
+          } > notes.md
+          gh release create "$tag" upload/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Test build ${GITHUB_SHA::7} — gateway (full artifact set)" \
+            --notes-file notes.md
+          echo "Download page: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
