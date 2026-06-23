@@ -163,7 +163,10 @@ describe('selectClientFactory — gateway model-id normalization (dated Haiku)',
         headers: { 'content-type': 'text/event-stream' },
       });
     }) as unknown as typeof globalThis.fetch;
-    const client = selectClientFactory(config, createAnthropicClient)({
+    const client = selectClientFactory(
+      config,
+      createAnthropicClient,
+    )({
       apiKey: CORP_BEARER,
       fetch,
       maxRetries: 0,
