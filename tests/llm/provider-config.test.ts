@@ -149,6 +149,45 @@ describe('selectClientFactory — gateway transform', () => {
   });
 });
 
+describe('selectClientFactory — gateway model-id normalization (dated Haiku)', () => {
+  const config: ProviderConfig = { provider: 'gateway', baseURL: 'https://corp.example/anthropic' };
+
+  // The model the SDK actually puts on the wire for a given requested model — the gateway only
+  // recognizes exact ids, so the bare Haiku alias must be rewritten to the dated form it enforces.
+  async function wireModelFor(requestedModel: string): Promise<string> {
+    let sent = '';
+    const fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+      sent = (JSON.parse(String(init?.body ?? '{}')) as { model?: string }).model ?? '';
+      return new Response(happyStream(sent || 'm'), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch;
+    const client = selectClientFactory(config, createAnthropicClient)({
+      apiKey: CORP_BEARER,
+      fetch,
+      maxRetries: 0,
+    });
+    await client.streamMessage(
+      {
+        model: requestedModel,
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        maxTokens: 16,
+      },
+      () => undefined,
+    );
+    return sent;
+  }
+
+  it('rewrites the bare Haiku alias to the dated id the gateway enforces', async () => {
+    expect(await wireModelFor('claude-haiku-4-5')).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('passes a model with no alias entry (Sonnet) through unchanged', async () => {
+    expect(await wireModelFor('claude-sonnet-4-6')).toBe('claude-sonnet-4-6');
+  });
+});
+
 describe('selectClientFactory — anthropic passthrough', () => {
   it('anthropic returns the base factory unchanged (passthrough)', () => {
     const config: ProviderConfig = { provider: 'anthropic' };
