@@ -1,6 +1,10 @@
 import type { ProviderConfig } from '@shared/types';
 
-import type { AnthropicClientFactory, AnthropicClientLike } from './anthropic-client';
+import type {
+  AnthropicClientFactory,
+  AnthropicClientLike,
+  StreamRequest,
+} from './anthropic-client';
 import { mapAnthropicError } from './errors';
 
 /*
@@ -68,6 +72,24 @@ export function providerSdkOptions(
   return { apiKey: null, authToken: credential ?? null, baseURL: config.baseURL };
 }
 
+// The corporate Bedrock gateway maps each incoming `model` to a fixed Bedrock model/inference-profile
+// and recognizes ONLY the exact ids in that map. For Haiku the gateway enforces the DATED snapshot;
+// the app's canonical bare alias `claude-haiku-4-5` (accepted by direct Anthropic, and the id the
+// curated fallback catalog uses when the gateway exposes no /v1/models) is NOT in the gateway's map,
+// so it's rejected. Normalize the bare alias to the dated form the gateway enforces (the same id the
+// connectivity ping uses) at the gateway egress, so EVERY gateway call — chat default, explicit pick,
+// or generation — sends an id the gateway recognizes. Sonnet's `claude-sonnet-4-6` is accepted as-is
+// (no entry). When the gateway DOES expose /v1/models and the picker already carries the dated id,
+// this is a harmless no-op (the dated id isn't a key).
+const GATEWAY_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+};
+
+function toGatewayModelRequest(request: StreamRequest): StreamRequest {
+  const mapped = GATEWAY_MODEL_ALIASES[request.model];
+  return mapped ? { ...request, model: mapped } : request;
+}
+
 // Build the per-provider client factory from the stored config. The service still reads the
 // credential per call into `options.apiKey` (Hard Rule §10 — read per call); the SELECTOR is
 // what re-routes it to the bearer + baseURL for the gateway and suppresses the apiKey.
@@ -89,7 +111,7 @@ export function selectClientFactory(
     const wrapped: AnthropicClientLike = {
       async streamMessage(request, onChunk) {
         try {
-          return await client.streamMessage(request, onChunk);
+          return await client.streamMessage(toGatewayModelRequest(request), onChunk);
         } catch (error) {
           // Provider-conditional mapping: a raw connection failure becomes
           // GATEWAY_UNREACHABLE; LlmServiceErrors (timeouts, CANCELLED) pass through.

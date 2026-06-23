@@ -616,7 +616,10 @@ app
     };
     const netFetch = ((input: unknown, init?: unknown) =>
       ensureGatewayProxy().then(() =>
-        net.fetch(input as Parameters<typeof net.fetch>[0], init as Parameters<typeof net.fetch>[1]),
+        net.fetch(
+          input as Parameters<typeof net.fetch>[0],
+          init as Parameters<typeof net.fetch>[1],
+        ),
       )) as unknown as typeof globalThis.fetch;
     const providerClientFactory: AnthropicClientFactory = (options) => {
       const provider = readProvider();
@@ -672,33 +675,55 @@ app
     // network or a gateway without /v1/models degrades to the static list (never blocks the picker).
     // In FAKE_LLM mode the lister rejects so the catalog stays the deterministic static list (no
     // network in e2e). The model-aware generation cap reads the LIVE ceiling off this cache.
-    // The corporate gateway serves a KNOWN fixed set (no Opus) and typically has no /v1/models —
-    // return this explicit allowlist for the gateway provider instead of querying (1-H).
+    // The corporate gateway is queried live too (provider-scoped: the corp creds + baseURL mean
+    // its /v1/models returns ONLY the corp set, never Anthropic's catalog), so a newly-served model
+    // is captured automatically. This curated allowlist (no Opus) is the FALLBACK when the gateway
+    // exposes no /v1/models — so the picker is never blank and never degrades to the static,
+    // Opus-bearing floor.
     const GATEWAY_MODELS: CatalogModel[] = [
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', maxOutputTokens: 64e3 },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64e3 },
     ];
     const listModels = async (): Promise<CatalogModel[]> => {
       const provider = readProvider();
-      if (provider.provider === 'gateway') {
-        return GATEWAY_MODELS;
-      }
       const credential = providerKeyReader.getKeyForMain();
       const opts = providerSdkOptions(provider, credential);
       const client = new Anthropic({
         apiKey: opts.apiKey,
         ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
         ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
+        // Route the gateway's models query through the SAME Chromium/proxy stack as chat + ping
+        // (net.fetch) — a bare Node fetch would bypass the corp proxy and fail. maxRetries 0 keeps a
+        // missing /v1/models from stalling the picker on SDK backoff before the curated fallback.
+        ...(provider.provider === 'gateway' ? { fetch: netFetch, maxRetries: 0 } : {}),
       });
-      const page = (await client.models.list()) as { data?: unknown[] };
-      return (page.data ?? []).map((entry): CatalogModel => {
-        const raw = entry as { id: string; display_name?: string; max_tokens?: number };
-        return {
-          id: raw.id,
-          label: raw.display_name ?? modelLabel(raw.id),
-          maxOutputTokens: raw.max_tokens ?? maxOutputTokensFor(raw.id) ?? GENERATION_MAX_TOKENS,
-        };
-      });
+      const fetchModels = async (): Promise<CatalogModel[]> => {
+        const page = (await client.models.list()) as { data?: unknown[] };
+        return (page.data ?? []).map((entry): CatalogModel => {
+          const raw = entry as { id: string; display_name?: string; max_tokens?: number };
+          return {
+            id: raw.id,
+            label: raw.display_name ?? modelLabel(raw.id),
+            maxOutputTokens: raw.max_tokens ?? maxOutputTokensFor(raw.id) ?? GENERATION_MAX_TOKENS,
+          };
+        });
+      };
+      // Gateway: query the gateway's OWN /v1/models (provider-scoped — corp creds + baseURL, so it
+      // returns ONLY the corp set, never Anthropic's catalog), capturing any newly-served model
+      // automatically. Fall back to the curated allowlist if the gateway has no models endpoint, so
+      // a 404 never blanks the picker or leaks the static Opus floor.
+      if (provider.provider === 'gateway') {
+        try {
+          const models = await fetchModels();
+          if (models.length > 0) {
+            return models;
+          }
+        } catch {
+          // Gateway without /v1/models (or a transient proxy error) — use the curated set.
+        }
+        return GATEWAY_MODELS;
+      }
+      return fetchModels();
     };
     // Main-process-only Anthropic path (M03.B; M03.C grounds it in the session's
     // notes via noteStore). The service reads the key via keyStore.getKeyForMain()
