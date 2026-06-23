@@ -1,5 +1,11 @@
 import type { SettingsApi } from '@shared/api';
-import type { KeyStatus, Prefs, ProviderConfig, SetKeyResult } from '@shared/types';
+import type {
+  GatewayPingResult,
+  KeyStatus,
+  Prefs,
+  ProviderConfig,
+  SetKeyResult,
+} from '@shared/types';
 
 import { SETTINGS_CHANNELS } from './channels';
 import type { IpcInvoke } from './session-bridge';
@@ -23,5 +29,6 @@ export function createSettingsApi(invoke: IpcInvoke): SettingsApi {
     getProvider: () => invoke(SETTINGS_CHANNELS.getProvider) as Promise<ProviderConfig>,
     setProvider: (provider) =>
       invoke(SETTINGS_CHANNELS.setProvider, provider) as Promise<ProviderConfig>,
+    pingGateway: () => invoke(SETTINGS_CHANNELS.pingGateway) as Promise<GatewayPingResult>,
   };
 }

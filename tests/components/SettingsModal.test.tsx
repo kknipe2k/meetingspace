@@ -41,6 +41,7 @@ function fakeClient(initial: KeyStatus) {
       provider = next;
       return provider;
     }),
+    pingGateway: vi.fn(async () => ({ ok: true as const })),
   };
 }
 

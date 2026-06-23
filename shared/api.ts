@@ -9,6 +9,7 @@ import type {
   ExportImagesResult,
   ExportRequest,
   ExportResult,
+  GatewayPingResult,
   GenArtifactSaved,
   GenDocument,
   GenDone,
@@ -127,6 +128,8 @@ export interface SettingsApi {
   setPrefs(prefs: Prefs): Promise<Prefs>;
   getProvider(): Promise<ProviderConfig>;
   setProvider(provider: ProviderConfig): Promise<ProviderConfig>;
+  // M07.D follow-up: one-shot gateway connectivity check (Test connection).
+  pingGateway(): Promise<GatewayPingResult>;
 }
 
 /*

@@ -55,3 +55,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # electron-builder reads this to upload assets
         run: npx electron-builder --${{ matrix.platform }} --config electron-builder.yml --publish always
+
+  # After both platforms have populated the (draft) release, set its body to the curated download
+  # guidance + changelog. RELEASE_NOTES.md carries __VERSION__ placeholders filled from the
+  # package.json version (the same version electron-builder tags the release with), so the file
+  # stays correct for every release. electron-builder creates the GitHub release as a DRAFT, so this
+  # edits the body before you review and publish it.
+  notes:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach the curated release notes (download guidance + changelog)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          ver="$(jq -r .version package.json)"
+          sed "s/__VERSION__/${ver}/g" RELEASE_NOTES.md > notes.rendered.md
+          gh release edit "v${ver}" --notes-file notes.rendered.md

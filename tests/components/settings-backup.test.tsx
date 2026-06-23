@@ -28,6 +28,7 @@ function fakeSettings() {
     setPrefs: vi.fn(async (next: Prefs) => (prefs = { ...prefs, ...next })),
     getProvider: vi.fn(async () => provider),
     setProvider: vi.fn(async () => provider),
+    pingGateway: vi.fn(async () => ({ ok: true as const })),
   };
 }
 

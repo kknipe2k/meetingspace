@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AnthropicClientLike } from '../../electron/llm/anthropic-client';
 import { createAnthropicClient } from '../../electron/llm/anthropic-client';
 import { LlmServiceError } from '../../electron/llm/errors';
-import { isAllowedGatewayUrl, selectClientFactory } from '../../electron/llm/provider-config';
+import {
+  isAllowedGatewayUrl,
+  isHttpNonLocalGatewayUrl,
+  selectClientFactory,
+} from '../../electron/llm/provider-config';
 import type { ProviderConfig } from '@shared/types';
 
 /*
@@ -12,7 +16,8 @@ import type { ProviderConfig } from '@shared/types';
  * and gateway (sk- bearer + baseURL — the corp credential routes to Bedrock BEHIND a
  * corporate gateway, but the client integration is pure gateway: no new dep, no SigV4).
  * The streamMessage interface is unchanged. RED pins:
- *   1. the https-baseURL guard (https, or http LOOPBACK only — http→remote rejected);
+ *   1. the gateway-URL guard (http/https accepted; an http NON-loopback host is flagged for a
+ *      non-blocking renderer warning, not rejected — corp gateways often expose internal HTTP);
  *   2. the gateway transform carries the credential as authToken and EXPLICITLY suppresses
  *      the SDK's apiKey env fallback (apiKey: null) so the anthropic x-api-key header can
  *      never reach a gateway host — proven WITH a sentinel ANTHROPIC_API_KEY in the env
@@ -64,24 +69,27 @@ const MODEL = 'claude-sonnet-4-6';
 const CORP_BEARER = 'sk-corp-bearer-NOT-an-anthropic-key-000';
 const SENTINEL_ANTHROPIC_KEY = 'sk-ant-SENTINEL-must-never-reach-gateway-000';
 
-describe('isAllowedGatewayUrl — https guard (http→remote rejected, typed key-free)', () => {
+describe('isAllowedGatewayUrl — opened to http/https, with an http-remote warning signal', () => {
   it('accepts https URLs', () => {
     expect(isAllowedGatewayUrl('https://corp.example/anthropic')).toBe(true);
   });
 
-  it('accepts http ONLY for loopback (localhost dev gateways)', () => {
+  it('accepts http URLs — loopback dev gateways AND internal corp endpoints (edge TLS)', () => {
     expect(isAllowedGatewayUrl('http://127.0.0.1:8080')).toBe(true);
     expect(isAllowedGatewayUrl('http://localhost:8080/v1')).toBe(true);
-    expect(isAllowedGatewayUrl('http://[::1]:8080')).toBe(true);
-  });
-
-  it('REJECTS http to a remote host (a cleartext token over the wire)', () => {
-    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(false);
+    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(true);
   });
 
   it('rejects a non-URL / non-http(s) scheme', () => {
     expect(isAllowedGatewayUrl('not-a-url')).toBe(false);
     expect(isAllowedGatewayUrl('ftp://corp.example')).toBe(false);
+  });
+
+  it('flags an http NON-loopback host for the renderer warning (https + http-loopback do not warn)', () => {
+    expect(isHttpNonLocalGatewayUrl('http://gateway.corp.example')).toBe(true);
+    expect(isHttpNonLocalGatewayUrl('https://corp.example')).toBe(false);
+    expect(isHttpNonLocalGatewayUrl('http://127.0.0.1:8080')).toBe(false);
+    expect(isHttpNonLocalGatewayUrl('http://localhost:8080')).toBe(false);
   });
 });
 
@@ -138,6 +146,48 @@ describe('selectClientFactory — gateway transform', () => {
     expect(captured[0]?.headers.get('x-api-key')).toBeNull();
     const rawHeaders = JSON.stringify([...captured[0]!.headers.entries()]);
     expect(rawHeaders).not.toContain(SENTINEL_ANTHROPIC_KEY);
+  });
+});
+
+describe('selectClientFactory — gateway model-id normalization (dated Haiku)', () => {
+  const config: ProviderConfig = { provider: 'gateway', baseURL: 'https://corp.example/anthropic' };
+
+  // The model the SDK actually puts on the wire for a given requested model — the gateway only
+  // recognizes exact ids, so the bare Haiku alias must be rewritten to the dated form it enforces.
+  async function wireModelFor(requestedModel: string): Promise<string> {
+    let sent = '';
+    const fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+      sent = (JSON.parse(String(init?.body ?? '{}')) as { model?: string }).model ?? '';
+      return new Response(happyStream(sent || 'm'), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch;
+    const client = selectClientFactory(
+      config,
+      createAnthropicClient,
+    )({
+      apiKey: CORP_BEARER,
+      fetch,
+      maxRetries: 0,
+    });
+    await client.streamMessage(
+      {
+        model: requestedModel,
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+        maxTokens: 16,
+      },
+      () => undefined,
+    );
+    return sent;
+  }
+
+  it('rewrites the bare Haiku alias to the dated id the gateway enforces', async () => {
+    expect(await wireModelFor('claude-haiku-4-5')).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('passes a model with no alias entry (Sonnet) through unchanged', async () => {
+    expect(await wireModelFor('claude-sonnet-4-6')).toBe('claude-sonnet-4-6');
   });
 });
 

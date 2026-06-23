@@ -80,6 +80,12 @@ export type SetKeyResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'encryption-unavailable' };
 
+// One-shot gateway connectivity check (Settings ▸ Test connection). Success means the bearer +
+// baseURL (+ optional proxy) reached the gateway and it replied; failure carries a short message.
+export type GatewayPingResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: string };
+
 // The LLM backend the app talks to (M07.D; REVIEW-V11 F19). `anthropic` is the direct
 // API (`sk-ant-` x-api-key). `gateway` is a corporate proxy reached over a base URL with
 // an `sk-` BEARER token (the corp credential routes to Bedrock BEHIND the gateway, but the
@@ -89,9 +95,11 @@ export type ProviderId = 'anthropic' | 'gateway';
 
 // The non-secret provider configuration persisted in Prefs. The SECRET (key / bearer) lives
 // only in the multi-credential KeyStore (safeStorage), never here.
+// `proxyUrl` is an OPTIONAL corporate forward proxy the gateway request routes through; it is
+// applied to Electron's network session (net.fetch) so the OS proxy/auth/cert handling is used.
 export type ProviderConfig =
   | { readonly provider: 'anthropic' }
-  | { readonly provider: 'gateway'; readonly baseURL: string };
+  | { readonly provider: 'gateway'; readonly baseURL: string; readonly proxyUrl?: string };
 
 // Persisted window geometry (M06.A; REVIEW-V11 F4) — size/position/maximized, restored on
 // launch after validation against the CURRENT displays (an off-all-displays bound snaps to

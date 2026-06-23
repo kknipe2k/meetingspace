@@ -37,6 +37,7 @@ function fakeSettings(initialPrefs: Prefs) {
     }),
     getProvider: vi.fn(async () => ({ provider: 'anthropic' as const })),
     setProvider: vi.fn(async (provider) => provider),
+    pingGateway: vi.fn(async () => ({ ok: true as const })),
   };
 }
 

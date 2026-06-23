@@ -1,6 +1,10 @@
 import type { ProviderConfig } from '@shared/types';
 
-import type { AnthropicClientFactory, AnthropicClientLike } from './anthropic-client';
+import type {
+  AnthropicClientFactory,
+  AnthropicClientLike,
+  StreamRequest,
+} from './anthropic-client';
 import { mapAnthropicError } from './errors';
 
 /*
@@ -21,8 +25,9 @@ import { mapAnthropicError } from './errors';
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
-// The gateway baseURL must be https EXCEPT for loopback (localhost dev gateways) — a
-// plaintext token over http to a remote host is a Hard Rule §4.10 cleartext leak.
+// Accept any https:// or http:// gateway URL. Corporate Bedrock gateways commonly expose an internal
+// HTTP endpoint (TLS terminates at the network edge); the security signal for non-local HTTP is a
+// non-blocking renderer toast (isHttpNonLocalGatewayUrl), not a hard block.
 export function isAllowedGatewayUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -30,13 +35,21 @@ export function isAllowedGatewayUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (parsed.protocol === 'https:') {
+  if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
     return true;
   }
-  if (parsed.protocol === 'http:') {
-    return LOOPBACK_HOSTS.has(parsed.hostname);
-  }
   return false;
+}
+
+// Companion helper for the renderer's non-blocking HTTP warning: true for an http:// URL whose host
+// is NOT loopback (the save still proceeds).
+export function isHttpNonLocalGatewayUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' && !LOOPBACK_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 // Map the active provider + the per-call credential to the SDK client options (M06.D — single
@@ -57,6 +70,24 @@ export function providerSdkOptions(
     return { apiKey: credential };
   }
   return { apiKey: null, authToken: credential ?? null, baseURL: config.baseURL };
+}
+
+// The corporate Bedrock gateway maps each incoming `model` to a fixed Bedrock model/inference-profile
+// and recognizes ONLY the exact ids in that map. For Haiku the gateway enforces the DATED snapshot;
+// the app's canonical bare alias `claude-haiku-4-5` (accepted by direct Anthropic, and the id the
+// curated fallback catalog uses when the gateway exposes no /v1/models) is NOT in the gateway's map,
+// so it's rejected. Normalize the bare alias to the dated form the gateway enforces (the same id the
+// connectivity ping uses) at the gateway egress, so EVERY gateway call — chat default, explicit pick,
+// or generation — sends an id the gateway recognizes. Sonnet's `claude-sonnet-4-6` is accepted as-is
+// (no entry). When the gateway DOES expose /v1/models and the picker already carries the dated id,
+// this is a harmless no-op (the dated id isn't a key).
+const GATEWAY_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+};
+
+function toGatewayModelRequest(request: StreamRequest): StreamRequest {
+  const mapped = GATEWAY_MODEL_ALIASES[request.model];
+  return mapped ? { ...request, model: mapped } : request;
 }
 
 // Build the per-provider client factory from the stored config. The service still reads the
@@ -80,7 +111,7 @@ export function selectClientFactory(
     const wrapped: AnthropicClientLike = {
       async streamMessage(request, onChunk) {
         try {
-          return await client.streamMessage(request, onChunk);
+          return await client.streamMessage(toGatewayModelRequest(request), onChunk);
         } catch (error) {
           // Provider-conditional mapping: a raw connection failure becomes
           // GATEWAY_UNREACHABLE; LlmServiceErrors (timeouts, CANCELLED) pass through.
