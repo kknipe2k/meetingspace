@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react';
 
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
 import type {
+  CatalogModel,
+  GatewayModelDiagnosis,
   GatewayPingResult,
   KeyStatus,
   PricingEntry,
@@ -63,6 +65,13 @@ export function SettingsModal({
   const [providerError, setProviderError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pricing, setPricing] = useState<PricingEntry[]>([]);
+  // Gateway diagnostics (curated picker): the FULL advertised model list, the user's working
+  // selection (seeded from the saved curation), and the per-id "what does it actually serve" results.
+  const [gatewayModels, setGatewayModels] = useState<CatalogModel[]>([]);
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  const [modelDiagnosis, setModelDiagnosis] = useState<Record<string, GatewayModelDiagnosis>>({});
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [testingModels, setTestingModels] = useState(false);
   const { surface } = useMutationToast();
   const { show } = useToasts();
 
@@ -107,6 +116,34 @@ export function SettingsModal({
       active = false;
     };
   }, [client]);
+
+  // Gateway diagnostics: once the gateway has a token, load the FULL advertised model list and the
+  // saved curation, so the panel shows every served model with the user's current picks checked.
+  // Gateway-only; reruns when the credential status flips (save/clear) so the list reflects reality.
+  useEffect(() => {
+    if (provider !== 'gateway' || !(status?.hasKey ?? false)) {
+      return undefined;
+    }
+    let active = true;
+    setLoadingModels(true);
+    void Promise.all([client.listGatewayModels?.() ?? Promise.resolve([]), client.getPrefs()])
+      .then(([served, prefs]) => {
+        if (!active) {
+          return;
+        }
+        setGatewayModels(served);
+        setSelectedModelIds([...(prefs.gatewayModels ?? [])]);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) {
+          setLoadingModels(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, provider, status]);
 
   // Before the first status load, assume encryption is available (so we don't flash an
   // error) and no key (so we don't claim one exists).
@@ -198,6 +235,48 @@ export function SettingsModal({
       setPingResult({ ok: false, error: 'Ping failed — check console for details.' });
     }
   }, [client]);
+
+  // Toggle a model in the working selection (the curated allowlist the dropdowns will show).
+  const toggleModel = useCallback((id: string): void => {
+    setSelectedModelIds((prev) =>
+      prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id],
+    );
+  }, []);
+
+  // Test the TICKED models: ping each and record the model the gateway actually serves (per row), so
+  // a substitution (ask for Sonnet 4.x, get 3.5 Sonnet) is visible before the user commits.
+  const handleTestModels = useCallback(async (): Promise<void> => {
+    if (selectedModelIds.length === 0) {
+      return;
+    }
+    setTestingModels(true);
+    try {
+      const results = (await client.diagnoseGatewayModels?.(selectedModelIds)) ?? [];
+      setModelDiagnosis((prev) => {
+        const next = { ...prev };
+        for (const result of results) {
+          next[result.id] = result;
+        }
+        return next;
+      });
+    } finally {
+      setTestingModels(false);
+    }
+  }, [client, selectedModelIds]);
+
+  // Persist the curated allowlist, then refresh the provider-scoped catalog so the chat + white-paper
+  // dropdowns immediately reflect the new selection (an empty selection reverts them to known tiers).
+  const handleSaveModels = useCallback(async (): Promise<void> => {
+    const saved = await surface(
+      () => client.setPrefs({ gatewayModels: selectedModelIds }),
+      "Couldn't save your model selection.",
+    );
+    if (saved === undefined) {
+      return;
+    }
+    void catalogClient.refresh();
+    show({ variant: 'info', message: 'Model list saved.' });
+  }, [client, selectedModelIds, surface, show]);
 
   // Full backup (M06.C): export the whole store to one portable file. A cancelled save dialog is
   // silent; a success confirms the path. Errors route through surface().
@@ -390,6 +469,75 @@ export function SettingsModal({
           </p>
         )}
       </section>
+
+      {isGateway && hasKey && (
+        <section className="settings-section" data-testid="settings-gateway-models">
+          <h3 className="settings-subheading">Gateway models</h3>
+          <p className="settings-help">
+            Your gateway advertises the models below. Tick the ones to show in the chat and
+            white-paper pickers, then <strong>Save models</strong>. Until you save a selection, the
+            pickers show the app’s known tiers (Haiku / Sonnet / Opus). Use{' '}
+            <strong>Test selected</strong> to see the model the gateway <em>actually</em> serves for
+            each pick — it may substitute a different one.
+          </p>
+
+          {loadingModels ? (
+            <p className="settings-help" data-testid="settings-gateway-models-loading">
+              Loading the gateway’s model list…
+            </p>
+          ) : gatewayModels.length === 0 ? (
+            <p className="settings-help">
+              The gateway returned no models from <code>/v1/models</code>.
+            </p>
+          ) : (
+            <ul className="settings-gateway-models">
+              {gatewayModels.map((model) => {
+                const result = modelDiagnosis[model.id];
+                return (
+                  <li key={model.id} className="settings-gateway-model">
+                    <label className="settings-gateway-model-pick">
+                      <input
+                        type="checkbox"
+                        checked={selectedModelIds.includes(model.id)}
+                        onChange={() => toggleModel(model.id)}
+                        aria-label={`Show ${model.label} in the model pickers`}
+                      />
+                      <span className="settings-gateway-model-label">{model.label}</span>
+                      <code className="settings-gateway-model-id">{model.id}</code>
+                    </label>
+                    {result && (
+                      <span
+                        className={result.ok ? 'settings-help' : 'settings-error'}
+                        data-testid="settings-gateway-model-served"
+                      >
+                        {result.ok ? `→ serves ${result.served}` : `✗ ${result.error}`}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleTestModels()}
+              disabled={testingModels || selectedModelIds.length === 0}
+            >
+              {testingModels ? 'Testing…' : 'Test selected'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleSaveModels()}
+            >
+              Save models
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="settings-section" data-testid="settings-spend-guidance">
         <h3 className="settings-subheading">Token usage &amp; cost</h3>

@@ -86,6 +86,17 @@ export type GatewayPingResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: string };
 
+// One row of the gateway model diagnostic (Settings ▸ Gateway diagnostics). For a requested model
+// id, `served` is the model the gateway ACTUALLY answered with (its response `model`) — which
+// reveals a substitution (e.g. you ask for a Sonnet 4.x id and it serves 3.5 Sonnet). `ok` is false
+// with an `error` when the ping failed (no token, HTTP error, unreachable). Never carries the token.
+export interface GatewayModelDiagnosis {
+  readonly id: string;
+  readonly served: string | null;
+  readonly ok: boolean;
+  readonly error?: string;
+}
+
 // The LLM backend the app talks to (M07.D; REVIEW-V11 F19). `anthropic` is the direct
 // API (`sk-ant-` x-api-key). `gateway` is a corporate proxy reached over a base URL with
 // an `sk-` BEARER token (the corp credential routes to Bedrock BEHIND the gateway, but the
@@ -150,6 +161,12 @@ export interface Prefs {
   // M06.E: set once the first-run onboarding has been completed OR skipped, so the welcome flow
   // appears exactly once (gated with hasKey by shouldShowOnboarding). Non-secret like the rest.
   readonly onboardingSeen?: boolean;
+  // Gateway diagnostics (curated picker): the gateway's /v1/models can advertise the whole Bedrock
+  // catalog, and it silently serves 3.5 Sonnet for ids it doesn't map. This is the user-curated
+  // allowlist of gateway model ids to show in the chat + generation dropdowns. Empty/absent ⇒ not
+  // curated yet ⇒ the dropdowns fall back to the app's known tiers (de-flooded). Gateway-only;
+  // non-secret like the rest.
+  readonly gatewayModels?: readonly string[];
 }
 
 // A native-menu command the main process forwards to the renderer over app:command (M06.A).

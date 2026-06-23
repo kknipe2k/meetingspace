@@ -3,7 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { KeyStatus, Prefs, ProviderConfig } from '@shared/types';
+import type {
+  CatalogModel,
+  GatewayModelDiagnosis,
+  KeyStatus,
+  Prefs,
+  ProviderConfig,
+} from '@shared/types';
 
 import { SettingsModal } from '../../src/components/SettingsModal';
 
@@ -42,6 +48,37 @@ function fakeClient(initial: KeyStatus) {
       return provider;
     }),
     pingGateway: vi.fn(async () => ({ ok: true as const })),
+  };
+}
+
+// A gateway-configured client (provider=gateway, token saved) that also implements the diagnostics
+// surface, so the Gateway models panel renders and exercises list / test / save.
+function gatewayClient(served: CatalogModel[], diagnosis: GatewayModelDiagnosis[] = []) {
+  let status: KeyStatus = { hasKey: true, encryptionAvailable: true };
+  let prefs: Prefs = {};
+  return {
+    setKey: vi.fn(async () => ({ ok: true as const })),
+    keyStatus: vi.fn(async () => status),
+    clearKey: vi.fn(async () => {
+      status = { ...status, hasKey: false };
+    }),
+    getPrefs: vi.fn(async () => prefs),
+    setPrefs: vi.fn(async (next: Prefs) => {
+      prefs = { ...prefs, ...next };
+      return prefs;
+    }),
+    getProvider: vi.fn(async () => ({
+      provider: 'gateway' as const,
+      baseURL: 'https://corp.example',
+    })),
+    setProvider: vi.fn(async (next: ProviderConfig) => next),
+    pingGateway: vi.fn(async () => ({ ok: true as const })),
+    listGatewayModels: vi.fn(async () => served),
+    diagnoseGatewayModels: vi.fn(async (ids: readonly string[]) =>
+      diagnosis.length > 0
+        ? diagnosis
+        : ids.map((id) => ({ id, served: `served-${id}`, ok: true })),
+    ),
   };
 }
 
@@ -205,5 +242,31 @@ describe('SettingsModal', () => {
     await user.keyboard('{Escape}');
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('gateway models: lists advertised ids, persists a curated selection, and tests served models', async () => {
+    const user = userEvent.setup();
+    const served: CatalogModel[] = [
+      { id: 'anthropic.claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', maxOutputTokens: 8192 },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64000 },
+    ];
+    const client = gatewayClient(served);
+    render(<SettingsModal client={client} onClose={vi.fn()} />);
+
+    // The advertised models are listed (raw ids shown so the user can curate against the flood).
+    expect(await screen.findByTestId('settings-gateway-models')).toBeInTheDocument();
+    expect(client.listGatewayModels).toHaveBeenCalled();
+    expect(screen.getByText('claude-sonnet-4-6')).toBeInTheDocument();
+    expect(screen.getByText('anthropic.claude-3-5-sonnet')).toBeInTheDocument();
+
+    // Tick one and Save → persisted as the curated allowlist (drives both pickers).
+    await user.click(screen.getByLabelText(/show claude sonnet 4\.6 in the model pickers/i));
+    await user.click(screen.getByRole('button', { name: /save models/i }));
+    expect(client.setPrefs).toHaveBeenCalledWith({ gatewayModels: ['claude-sonnet-4-6'] });
+
+    // Test selected → pings the ticked id and shows the model the gateway actually serves.
+    await user.click(screen.getByRole('button', { name: /test selected/i }));
+    expect(client.diagnoseGatewayModels).toHaveBeenCalledWith(['claude-sonnet-4-6']);
+    expect(await screen.findByTestId('settings-gateway-model-served')).toHaveTextContent(/serves/i);
   });
 });

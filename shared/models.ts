@@ -89,3 +89,34 @@ export function maxOutputTokensFor(model: string): number | null {
   const match = CHAT_MODELS.find((option) => model === option.id || model.startsWith(option.id));
   return match ? match.maxOutputTokens : null;
 }
+
+// Conservative output ceiling for a curated gateway id we can't resolve to served metadata
+// (only hit if the gateway stops advertising a still-selected id) — the model-aware generation cap
+// reads this; a real served entry always supplies the live value.
+const GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS = 64000;
+
+// The gateway picker's curated view (Gateway diagnostics). A corporate gateway's /v1/models can
+// advertise the whole Bedrock catalog (and silently serve 3.5 Sonnet for ids it doesn't map), so the
+// user curates which ids appear in the model dropdowns. Until they curate (empty list), the
+// dropdowns fall back to the app's KNOWN TIERS (STATIC_CATALOG) instead of the full advertised set —
+// de-flooded. When curated, each chosen id resolves to its served metadata (label / maxOutputTokens)
+// when present, else a best-effort synthesized entry so a still-selected id never vanishes from the
+// picker. Pure + shared so it's the single source for both main (catalog filter) and its tests.
+export function curateGatewayModels(
+  served: readonly CatalogModel[],
+  curatedIds: readonly string[],
+): CatalogModel[] {
+  if (curatedIds.length === 0) {
+    return [...STATIC_CATALOG];
+  }
+  return curatedIds.map((id) => {
+    const match = served.find((model) => model.id === id);
+    return (
+      match ?? {
+        id,
+        label: modelLabel(id),
+        maxOutputTokens: maxOutputTokensFor(id) ?? GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS,
+      }
+    );
+  });
+}

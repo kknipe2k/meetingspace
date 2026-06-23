@@ -91,6 +91,11 @@ export const SETTINGS_CHANNELS = {
   setProvider: 'settings:setProvider',
   // M07.D follow-up: one-shot gateway connectivity check (Test connection). Returns { ok, error }.
   pingGateway: 'settings:pingGateway',
+  // Gateway diagnostics (curated picker): `listGatewayModels` returns the FULL advertised gateway
+  // set (uncurated) for the diagnostic panel to choose from; `diagnoseGatewayModels` pings each given
+  // id and reports the model the gateway actually serves. Gateway-only; no token crosses.
+  listGatewayModels: 'settings:listGatewayModels',
+  diagnoseGatewayModels: 'settings:diagnoseGatewayModels',
 } as const;
 
 export type SettingsChannel = (typeof SETTINGS_CHANNELS)[keyof typeof SETTINGS_CHANNELS];

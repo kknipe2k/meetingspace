@@ -48,6 +48,14 @@ function asPrefs(value: unknown): Prefs {
       throw new TypeError(`settings ipc: ${field} must be a string`);
     }
   }
+  if (record.gatewayModels !== undefined) {
+    if (
+      !Array.isArray(record.gatewayModels) ||
+      record.gatewayModels.some((id) => typeof id !== 'string')
+    ) {
+      throw new TypeError('settings ipc: gatewayModels must be a string[]');
+    }
+  }
   if (
     record.themePreference !== undefined &&
     record.themePreference !== 'system' &&

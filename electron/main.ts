@@ -59,8 +59,8 @@ import { devEnv } from './dev-env';
 import { denyWindowOpen, installPermissionHandlers, shouldBlockNavigation } from './window-guards';
 import { registerSettingsHandlers } from './ipc/settings-handlers';
 import Anthropic from '@anthropic-ai/sdk';
-import type { CatalogModel } from '@shared/types';
-import { maxOutputTokensFor, modelLabel } from '@shared/models';
+import type { CatalogModel, GatewayModelDiagnosis } from '@shared/types';
+import { curateGatewayModels, maxOutputTokensFor, modelLabel } from '@shared/models';
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
 
 import { createAnthropicClient, type AnthropicClientFactory } from './llm/anthropic-client';
@@ -684,7 +684,7 @@ app
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', maxOutputTokens: 64e3 },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64e3 },
     ];
-    const listModels = async (): Promise<CatalogModel[]> => {
+    const fetchServedModels = async (): Promise<CatalogModel[]> => {
       const provider = readProvider();
       const credential = providerKeyReader.getKeyForMain();
       const opts = providerSdkOptions(provider, credential);
@@ -708,10 +708,11 @@ app
           };
         });
       };
-      // Gateway: query the gateway's OWN /v1/models (provider-scoped — corp creds + baseURL, so it
-      // returns ONLY the corp set, never Anthropic's catalog), capturing any newly-served model
-      // automatically. Fall back to the curated allowlist if the gateway has no models endpoint, so
-      // a 404 never blanks the picker or leaks the static Opus floor.
+      // Gateway: query the gateway's OWN /v1/models (provider-scoped — corp creds + baseURL). This is
+      // the FULL advertised set, which a corporate gateway may flood with the whole Bedrock catalog;
+      // the per-user curation (curateGatewayModels, below) is what narrows it for the pickers. Fall
+      // back to the curated allowlist if the gateway exposes no models endpoint, so a 404 never blanks
+      // the picker.
       if (provider.provider === 'gateway') {
         try {
           const models = await fetchModels();
@@ -725,6 +726,79 @@ app
       }
       return fetchModels();
     };
+
+    // The picker list = the served set, then the gateway CURATION: the user-chosen ids, or the app's
+    // KNOWN TIERS until they curate (so the corporate gateway's full Bedrock advertisement never
+    // floods the dropdowns). Anthropic is unaffected — its /v1/models already IS the real catalog.
+    const listModels = async (): Promise<CatalogModel[]> => {
+      const served = await fetchServedModels();
+      if (readProvider().provider !== 'gateway') {
+        return served;
+      }
+      return curateGatewayModels(served, prefsStore.get().gatewayModels ?? []);
+    };
+
+    // Gateway diagnostics (curated picker, Settings). `listGatewayModels` returns the FULL advertised
+    // set (uncurated) for the panel to choose from; `diagnoseGatewayModels` pings each chosen id and
+    // reports the model the gateway ACTUALLY serves — exposing a substitution (you ask for Sonnet, it
+    // serves 3.5 Sonnet) before you commit. Both route through net.fetch (the corp proxy path) and
+    // read the credential per call; the token never crosses back. Gateway-only.
+    registrar.handle(SETTINGS_CHANNELS.listGatewayModels, async () => {
+      if (readProvider().provider !== 'gateway') {
+        return [] as CatalogModel[];
+      }
+      return fetchServedModels();
+    });
+    registrar.handle(SETTINGS_CHANNELS.diagnoseGatewayModels, async (_event, raw) => {
+      const ids = Array.isArray(raw)
+        ? raw.filter((value): value is string => typeof value === 'string')
+        : [];
+      const provider = readProvider();
+      if (provider.provider !== 'gateway' || ids.length === 0) {
+        return [] as GatewayModelDiagnosis[];
+      }
+      const credential = providerKeyReader.getKeyForMain();
+      if (!credential) {
+        return ids.map(
+          (id): GatewayModelDiagnosis => ({
+            id,
+            served: null,
+            ok: false,
+            error: 'No gateway token saved.',
+          }),
+        );
+      }
+      const opts = providerSdkOptions(provider, credential);
+      const probe = new Anthropic({
+        apiKey: opts.apiKey,
+        ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
+        ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
+        maxRetries: 0,
+        fetch: netFetch,
+      });
+      const diagnoseOne = async (id: string): Promise<GatewayModelDiagnosis> => {
+        try {
+          const response = await probe.messages.create({
+            model: id,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'ping' }],
+          });
+          return { id, served: response.model, ok: true };
+        } catch (error) {
+          const status = (error as { status?: number } | null)?.status;
+          const message = (error as { message?: string } | null)?.message ?? String(error);
+          return {
+            id,
+            served: null,
+            ok: false,
+            error: status ? `HTTP ${status}: ${message}` : message,
+          };
+        }
+      };
+      // A small upper bound so a huge advertised catalog can't fan out into a token/network storm;
+      // the panel only ever tests the handful the user ticked.
+      return Promise.all(ids.slice(0, 25).map(diagnoseOne));
+    });
     // Main-process-only Anthropic path (M03.B; M03.C grounds it in the session's
     // notes via noteStore). The service reads the key via keyStore.getKeyForMain()
     // per call and streams over typed IPC; the renderer never sees the key or the
