@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AnthropicClientLike } from '../../electron/llm/anthropic-client';
 import { createAnthropicClient } from '../../electron/llm/anthropic-client';
 import { LlmServiceError } from '../../electron/llm/errors';
-import { isAllowedGatewayUrl, selectClientFactory } from '../../electron/llm/provider-config';
+import {
+  isAllowedGatewayUrl,
+  isHttpNonLocalGatewayUrl,
+  selectClientFactory,
+} from '../../electron/llm/provider-config';
 import type { ProviderConfig } from '@shared/types';
 
 /*
@@ -12,7 +16,8 @@ import type { ProviderConfig } from '@shared/types';
  * and gateway (sk- bearer + baseURL — the corp credential routes to Bedrock BEHIND a
  * corporate gateway, but the client integration is pure gateway: no new dep, no SigV4).
  * The streamMessage interface is unchanged. RED pins:
- *   1. the https-baseURL guard (https, or http LOOPBACK only — http→remote rejected);
+ *   1. the gateway-URL guard (http/https accepted; an http NON-loopback host is flagged for a
+ *      non-blocking renderer warning, not rejected — corp gateways often expose internal HTTP);
  *   2. the gateway transform carries the credential as authToken and EXPLICITLY suppresses
  *      the SDK's apiKey env fallback (apiKey: null) so the anthropic x-api-key header can
  *      never reach a gateway host — proven WITH a sentinel ANTHROPIC_API_KEY in the env
@@ -64,24 +69,27 @@ const MODEL = 'claude-sonnet-4-6';
 const CORP_BEARER = 'sk-corp-bearer-NOT-an-anthropic-key-000';
 const SENTINEL_ANTHROPIC_KEY = 'sk-ant-SENTINEL-must-never-reach-gateway-000';
 
-describe('isAllowedGatewayUrl — https guard (http→remote rejected, typed key-free)', () => {
+describe('isAllowedGatewayUrl — opened to http/https, with an http-remote warning signal', () => {
   it('accepts https URLs', () => {
     expect(isAllowedGatewayUrl('https://corp.example/anthropic')).toBe(true);
   });
 
-  it('accepts http ONLY for loopback (localhost dev gateways)', () => {
+  it('accepts http URLs — loopback dev gateways AND internal corp endpoints (edge TLS)', () => {
     expect(isAllowedGatewayUrl('http://127.0.0.1:8080')).toBe(true);
     expect(isAllowedGatewayUrl('http://localhost:8080/v1')).toBe(true);
-    expect(isAllowedGatewayUrl('http://[::1]:8080')).toBe(true);
-  });
-
-  it('REJECTS http to a remote host (a cleartext token over the wire)', () => {
-    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(false);
+    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(true);
   });
 
   it('rejects a non-URL / non-http(s) scheme', () => {
     expect(isAllowedGatewayUrl('not-a-url')).toBe(false);
     expect(isAllowedGatewayUrl('ftp://corp.example')).toBe(false);
+  });
+
+  it('flags an http NON-loopback host for the renderer warning (https + http-loopback do not warn)', () => {
+    expect(isHttpNonLocalGatewayUrl('http://gateway.corp.example')).toBe(true);
+    expect(isHttpNonLocalGatewayUrl('https://corp.example')).toBe(false);
+    expect(isHttpNonLocalGatewayUrl('http://127.0.0.1:8080')).toBe(false);
+    expect(isHttpNonLocalGatewayUrl('http://localhost:8080')).toBe(false);
   });
 });
 

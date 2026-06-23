@@ -56,6 +56,7 @@ const noopSettings: SettingsApi = {
   setPrefs: () => Promise.resolve({}),
   getProvider: () => Promise.resolve({ provider: 'anthropic' }),
   setProvider: (provider) => Promise.resolve(provider),
+  pingGateway: () => Promise.resolve({ ok: true }),
 };
 
 const noopLlm: LlmApi = {
@@ -222,6 +223,7 @@ describe('preload contextBridge contract', () => {
       'getPrefs',
       'getProvider',
       'keyStatus',
+      'pingGateway',
       'setKey',
       'setPrefs',
       'setProvider',

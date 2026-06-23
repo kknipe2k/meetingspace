@@ -178,6 +178,7 @@ const settingsClient: SettingsApi = {
   clearKey: () => Promise.resolve(),
   getProvider: () => Promise.resolve({ provider: 'anthropic' }),
   setProvider: () => Promise.resolve({ provider: 'anthropic' }),
+  pingGateway: () => Promise.resolve({ ok: true }),
 };
 const searchClient: SearchApi = { notes: () => Promise.resolve([]) };
 const genStatusClient = {

@@ -55,6 +55,7 @@ function fakeSettings(): SettingsApi {
     setPrefs: (prefs) => Promise.resolve(prefs),
     getProvider: () => Promise.resolve({ provider: 'anthropic' }),
     setProvider: (provider) => Promise.resolve(provider),
+    pingGateway: () => Promise.resolve({ ok: true }),
   };
 }
 

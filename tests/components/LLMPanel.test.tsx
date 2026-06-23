@@ -30,6 +30,7 @@ const settings: SettingsApi = {
   setPrefs: () => Promise.resolve({}),
   getProvider: () => Promise.resolve({ provider: 'anthropic' }),
   setProvider: (provider) => Promise.resolve(provider),
+  pingGateway: () => Promise.resolve({ ok: true }),
 };
 
 beforeEach(() => {

@@ -23,6 +23,7 @@ function settingsClient(): SettingsApi {
     setPrefs: vi.fn(async (p) => p),
     getProvider: vi.fn(async () => ({ provider: 'anthropic' as const })),
     setProvider: vi.fn(async (p) => p),
+    pingGateway: vi.fn(async () => ({ ok: true as const })),
   };
 }
 

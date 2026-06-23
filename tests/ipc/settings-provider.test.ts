@@ -12,8 +12,9 @@ import { KeyStore, type SafeStorageLike } from '../../electron/secure-store';
 /*
  * M07.D — the settings IPC surface for the provider switch (REVIEW-V11 F19). New channels:
  * getProvider/setProvider (non-secret config in prefs); setKey/keyStatus/clearKey gain an
- * optional providerId (default anthropic = compat). setProvider rejects an http-remote
- * gateway baseURL with a typed key-free error (Hard Rule §4.10 — no token over cleartext).
+ * optional providerId (default anthropic = compat). setProvider validates the gateway baseURL:
+ * http/https are accepted (corp gateways often expose internal HTTP behind edge TLS — the
+ * http-non-local signal is a non-blocking renderer warning), a non-http(s) scheme is rejected.
  */
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -80,25 +81,29 @@ describe('settings IPC — provider config', () => {
     });
   });
 
-  it('REJECTS a gateway baseURL of http to a remote host (typed key-free error)', () => {
+  it('accepts an http-remote gateway baseURL (edge TLS) but rejects a non-http(s) scheme', () => {
     setup();
-    // Load-bearing precondition so the throw below proves the GUARD rejected, not that the
+    // Load-bearing precondition so the assertions below prove the GUARD ran, not that the
     // channel is merely unregistered (a missing handler would also throw — gotcha #1).
     expect(handlers.has(SETTINGS_CHANNELS.setProvider)).toBe(true);
-    // The guard throws on a remote http URL …
+    // The validator was OPENED (M07.D follow-up): corporate gateways commonly expose an internal
+    // HTTP endpoint (TLS terminates at the network edge), so an http-remote URL is STORED — the
+    // http-non-local signal is a non-blocking renderer warning, not a hard main-side block.
+    call(SETTINGS_CHANNELS.setProvider, {
+      provider: 'gateway',
+      baseURL: 'http://gateway.corp.example',
+    });
+    expect(call(SETTINGS_CHANNELS.getProvider)).toEqual({
+      provider: 'gateway',
+      baseURL: 'http://gateway.corp.example',
+    });
+    // … but a non-http(s) scheme is still rejected (a token can't ride a non-web scheme).
     expect(() =>
       call(SETTINGS_CHANNELS.setProvider, {
         provider: 'gateway',
-        baseURL: 'http://gateway.corp.example',
+        baseURL: 'ftp://gateway.corp.example',
       }),
     ).toThrow();
-    // … but NOT on a valid https URL (so a handler that threw unconditionally would fail here).
-    expect(() =>
-      call(SETTINGS_CHANNELS.setProvider, {
-        provider: 'gateway',
-        baseURL: 'https://corp.example/v1',
-      }),
-    ).not.toThrow();
   });
 });
 

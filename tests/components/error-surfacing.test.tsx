@@ -364,6 +364,7 @@ describe('Preference writes surface failures (F18 by-design sites, now surfaced)
       clearKey: () => Promise.resolve(),
       getProvider: () => Promise.resolve({ provider: 'anthropic' }),
       setProvider: () => Promise.resolve({ provider: 'anthropic' }),
+      pingGateway: () => Promise.resolve({ ok: true }),
     };
     render(
       withToasts(
@@ -416,6 +417,7 @@ describe('SettingsModal — credential mutation failures surface', () => {
       clearKey: () => Promise.resolve(),
       getProvider: () => Promise.resolve({ provider: 'anthropic' }),
       setProvider: () => Promise.resolve({ provider: 'anthropic' }),
+      pingGateway: () => Promise.resolve({ ok: true }),
       ...over,
     };
   }
