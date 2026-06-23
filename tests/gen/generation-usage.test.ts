@@ -32,9 +32,10 @@ const templates: GenTemplateReader = {
   getTemplate: (id) => (id === TEMPLATE.id ? TEMPLATE : null),
 };
 
-function store(): GenArtifactStore {
+function store(): GenArtifactStore & { saved: GenDocument[] } {
   const saved: GenDocument[] = [];
   return {
+    saved,
     saveArtifact: (input) => {
       const doc = { id: `d${saved.length + 1}`, createdAt: 1, ...input } as GenDocument;
       saved.push(doc);
@@ -54,31 +55,35 @@ function focusClient(): AnthropicClientLike {
   };
 }
 
-// The usage row records the model the run USED (the resolved request model — same id the artifact
-// stores), not the API's echoed snapshot. Pass it explicitly so the assertion is deterministic.
+// The request asks for 'claude-sonnet-4-6', but the fake client answers AS 'm-gen' (the gateway-
+// substitution shape). The usage row AND the persisted artifact must record 'm-gen' — the model the
+// API actually answered with — not the requested id, so spend + badge reflect what truly ran.
 const REQUEST = { sessionId: 's1', templateId: 't1', model: 'claude-sonnet-4-6' } as const;
 
 describe('generation usage recording', () => {
   it('records the real run usage on a successful focus generation', async () => {
     const usage = { record: vi.fn() };
+    const artifacts = store();
     const service = createGenerationService({
       keyStore: { getKeyForMain: () => KEY },
       clientFactory: () => focusClient(),
       templates,
       notes,
       assets,
-      artifacts: store(),
+      artifacts,
       usage,
     });
 
     await service.generateFocus(REQUEST, { onChunk: () => undefined });
 
+    // Recorded + persisted as the ANSWERED model ('m-gen'), never the requested 'claude-sonnet-4-6'.
     expect(usage.record).toHaveBeenCalledWith({
       sessionId: 's1',
       kind: 'focus',
-      model: 'claude-sonnet-4-6',
+      model: 'm-gen',
       usage: FOCUS_USAGE,
     });
+    expect(artifacts.saved[0]?.model).toBe('m-gen');
   });
 
   it('records no usage when the run is cancelled (nothing persisted — F11)', async () => {
