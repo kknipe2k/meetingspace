@@ -145,7 +145,8 @@ export function SettingsModal({
     setProviderError(null);
     if (provider === 'gateway') {
       // Persist the (main-side validated) provider config first; the token is NOT sent until the
-      // gateway is configured. An http non-localhost save succeeds but raises a non-blocking warning.
+      // gateway is configured. The base URL must be https (http only for localhost, or the explicit
+      // MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP override) — a rejected URL surfaces below, unsent.
       try {
         const saved2: ProviderConfig = await client.setProvider({
           provider: 'gateway',
@@ -157,23 +158,9 @@ export function SettingsModal({
         }
         // Provider-scoped model cache: refresh so the picker shows the gateway's fixed set.
         void catalogClient.refresh();
-        try {
-          const parsedUrl = new URL(gatewayUrl);
-          const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
-          if (parsedUrl.protocol === 'http:' && !loopbackHosts.has(parsedUrl.hostname)) {
-            show({
-              variant: 'warning',
-              message:
-                'Gateway saved using HTTP (not HTTPS). Ensure you are on a trusted network or VPN.',
-              durationMs: 8000,
-            });
-          }
-        } catch {
-          /* non-URL: skip the HTTP warning */
-        }
       } catch {
         setProviderError(
-          'The gateway URL could not be saved. Ensure the URL is valid (http:// or https://).',
+          'The gateway URL was not saved. Use an https:// URL (http:// is allowed only for localhost).',
         );
         return;
       }
@@ -188,7 +175,7 @@ export function SettingsModal({
     // Drop the plaintext from renderer state the moment it is handed off.
     setDraft('');
     await refresh(provider);
-  }, [client, draft, encryptionAvailable, gatewayUrl, proxyUrl, provider, refresh, show, surface]);
+  }, [client, draft, encryptionAvailable, gatewayUrl, proxyUrl, provider, refresh, surface]);
 
   const handleClear = useCallback(async (): Promise<void> => {
     const ok = await surface(
@@ -321,6 +308,9 @@ export function SettingsModal({
               autoComplete="off"
               spellCheck={false}
             />
+            <p className="settings-help">
+              Must be an <strong>https://</strong> URL (http:// is allowed only for localhost).
+            </p>
             <label className="settings-field-label" htmlFor="gateway-proxy">
               Proxy URL (advanced — usually leave blank)
             </label>

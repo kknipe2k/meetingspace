@@ -16,8 +16,8 @@ import type { ProviderConfig } from '@shared/types';
  * and gateway (sk- bearer + baseURL — the corp credential routes to Bedrock BEHIND a
  * corporate gateway, but the client integration is pure gateway: no new dep, no SigV4).
  * The streamMessage interface is unchanged. RED pins:
- *   1. the gateway-URL guard (http/https accepted; an http NON-loopback host is flagged for a
- *      non-blocking renderer warning, not rejected — corp gateways often expose internal HTTP);
+ *   1. the gateway-URL guard (https default; http only for loopback, or a non-loopback host under
+ *      the explicit MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP override — a bearer can't ride cleartext);
  *   2. the gateway transform carries the credential as authToken and EXPLICITLY suppresses
  *      the SDK's apiKey env fallback (apiKey: null) so the anthropic x-api-key header can
  *      never reach a gateway host — proven WITH a sentinel ANTHROPIC_API_KEY in the env
@@ -69,23 +69,46 @@ const MODEL = 'claude-sonnet-4-6';
 const CORP_BEARER = 'sk-corp-bearer-NOT-an-anthropic-key-000';
 const SENTINEL_ANTHROPIC_KEY = 'sk-ant-SENTINEL-must-never-reach-gateway-000';
 
-describe('isAllowedGatewayUrl — opened to http/https, with an http-remote warning signal', () => {
+describe('isAllowedGatewayUrl — https default, loopback http, env-gated insecure override', () => {
+  const PRIOR = process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP;
+  afterEach(() => {
+    if (PRIOR === undefined) {
+      delete process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP;
+    } else {
+      process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = PRIOR;
+    }
+  });
+
   it('accepts https URLs', () => {
     expect(isAllowedGatewayUrl('https://corp.example/anthropic')).toBe(true);
   });
 
-  it('accepts http URLs — loopback dev gateways AND internal corp endpoints (edge TLS)', () => {
+  it('accepts http ONLY for loopback (local agents / sidecars / dev)', () => {
     expect(isAllowedGatewayUrl('http://127.0.0.1:8080')).toBe(true);
     expect(isAllowedGatewayUrl('http://localhost:8080/v1')).toBe(true);
-    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(true);
+    expect(isAllowedGatewayUrl('http://[::1]:8080')).toBe(true);
   });
 
-  it('rejects a non-URL / non-http(s) scheme', () => {
+  it('REJECTS http to a non-loopback host by default (a bearer token over cleartext)', () => {
+    delete process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP;
+    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(false);
+  });
+
+  it('allows http to a non-loopback host ONLY under the explicit insecure override', () => {
+    process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = '1';
+    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(true);
+    // Opt-in to the exact value '1' — anything else stays refused.
+    process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = 'true';
+    expect(isAllowedGatewayUrl('http://gateway.corp.example')).toBe(false);
+  });
+
+  it('rejects a non-URL / non-http(s) scheme even with the override set', () => {
+    process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = '1';
     expect(isAllowedGatewayUrl('not-a-url')).toBe(false);
     expect(isAllowedGatewayUrl('ftp://corp.example')).toBe(false);
   });
 
-  it('flags an http NON-loopback host for the renderer warning (https + http-loopback do not warn)', () => {
+  it('isHttpNonLocalGatewayUrl flags the insecure case (https + http-loopback do not)', () => {
     expect(isHttpNonLocalGatewayUrl('http://gateway.corp.example')).toBe(true);
     expect(isHttpNonLocalGatewayUrl('https://corp.example')).toBe(false);
     expect(isHttpNonLocalGatewayUrl('http://127.0.0.1:8080')).toBe(false);

@@ -73,7 +73,8 @@ function asProviderConfig(value: unknown): ProviderConfig {
     const baseURL = asString(record.baseURL, 'baseURL');
     if (!isAllowedGatewayUrl(baseURL)) {
       throw new TypeError(
-        'settings ipc: gateway baseURL must be https (http allowed only for localhost)',
+        'settings ipc: gateway baseURL must be https (http allowed only for localhost, or set ' +
+          'MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP=1 for an internal HTTP gateway)',
       );
     }
     const proxyUrl =

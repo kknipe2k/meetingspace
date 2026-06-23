@@ -24,6 +24,10 @@ const ALLOWLIST: ReadonlyMap<string, string> = new Map([
     'dev-env.ts',
     'the single !app.isPackaged-gated dev/test env accessor — the one place process.env is read',
   ],
+  [
+    'llm/provider-config.ts',
+    'the always-on MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP override — a deliberate production escape hatch for an internal corporate plain-HTTP gateway; it MUST work in packaged builds, so it is intentionally NOT behind the dev-env gate',
+  ],
 ]);
 
 const RAW_ENV_READ = /process\.env/;

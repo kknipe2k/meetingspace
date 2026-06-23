@@ -25,9 +25,14 @@ import { mapAnthropicError } from './errors';
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
-// Accept any https:// or http:// gateway URL. Corporate Bedrock gateways commonly expose an internal
-// HTTP endpoint (TLS terminates at the network edge); the security signal for non-local HTTP is a
-// non-blocking renderer toast (isHttpNonLocalGatewayUrl), not a hard block.
+// Gateway base URLs must be HTTPS — a bearer token rides to this host, so plain-HTTP to a
+// NON-loopback host is refused by default (the token would be observable on the wire). HTTP is
+// always allowed for loopback (local agents / proxy sidecars / dev), and for a non-loopback host
+// ONLY when the operator sets the explicit escape hatch MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP=1
+// — a deliberate opt-in for a corporate internal plain-HTTP gateway behind a trusted network
+// boundary (the token may be observable on that path). This reads the REAL process.env (NOT the
+// !app.isPackaged-gated devEnv) because the override must work in the SHIPPED app; the read is
+// allowlisted in tests/security/env-seams.test.ts as a conscious, always-on production override.
 export function isAllowedGatewayUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -35,14 +40,20 @@ export function isAllowedGatewayUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+  if (parsed.protocol === 'https:') {
     return true;
+  }
+  if (parsed.protocol === 'http:') {
+    if (LOOPBACK_HOSTS.has(parsed.hostname)) {
+      return true;
+    }
+    return process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP === '1';
   }
   return false;
 }
 
-// Companion helper for the renderer's non-blocking HTTP warning: true for an http:// URL whose host
-// is NOT loopback (the save still proceeds).
+// Companion helper for the renderer's insecure-HTTP messaging: true for an http:// URL whose host
+// is NOT loopback — the case that is refused unless the insecure-HTTP override is set.
 export function isHttpNonLocalGatewayUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
