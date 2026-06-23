@@ -30,8 +30,8 @@ You'll need your own Anthropic API key for the Claude features (chat / white pap
 
 ## ✨ What's new in __VERSION__
 
-- **Corporate gateway support:** point MeetingSpace at a corporate AWS Bedrock gateway reached through your company proxy. Claude calls follow the OS system proxy (including PAC/WPAD auto-config), with enterprise proxy authentication and the OS certificate store handled for you.
-- **Test connection:** a one-click connectivity check in Settings confirms the gateway is reachable before you start.
-- **Gateway model list:** the model picker shows exactly the models your gateway serves (auto-discovered), and chat now sends the precise model id the gateway requires.
+- **Gateway security hardening:** gateway base URLs now require **HTTPS** by default — plain HTTP is accepted only for localhost, or via an explicit advanced override for an internal corporate HTTP gateway behind a trusted network. This keeps your gateway token off cleartext connections by default.
+- **Supply chain:** the CI/release GitHub Actions are pinned to commit SHAs, with automated update tracking.
+- Includes everything from 1.2.1: corporate AWS Bedrock **gateway** support (via your company proxy), **Test connection**, and the gateway **model list**.
 
 Full details in CHANGELOG.md.
