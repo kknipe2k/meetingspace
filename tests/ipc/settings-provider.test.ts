@@ -13,8 +13,8 @@ import { KeyStore, type SafeStorageLike } from '../../electron/secure-store';
  * M07.D — the settings IPC surface for the provider switch (REVIEW-V11 F19). New channels:
  * getProvider/setProvider (non-secret config in prefs); setKey/keyStatus/clearKey gain an
  * optional providerId (default anthropic = compat). setProvider validates the gateway baseURL:
- * http/https are accepted (corp gateways often expose internal HTTP behind edge TLS — the
- * http-non-local signal is a non-blocking renderer warning), a non-http(s) scheme is rejected.
+ * https is required (http allowed only for loopback, or a non-loopback host under the explicit
+ * MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP override), so a bearer token can't transit cleartext.
  */
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -81,29 +81,46 @@ describe('settings IPC — provider config', () => {
     });
   });
 
-  it('accepts an http-remote gateway baseURL (edge TLS) but rejects a non-http(s) scheme', () => {
+  it('REJECTS a remote http gateway baseURL by default (no token over cleartext)', () => {
     setup();
-    // Load-bearing precondition so the assertions below prove the GUARD ran, not that the
-    // channel is merely unregistered (a missing handler would also throw — gotcha #1).
+    // Load-bearing precondition so the throw below proves the GUARD rejected, not that the channel
+    // is merely unregistered (a missing handler would also throw — gotcha #1).
     expect(handlers.has(SETTINGS_CHANNELS.setProvider)).toBe(true);
-    // The validator was OPENED (M07.D follow-up): corporate gateways commonly expose an internal
-    // HTTP endpoint (TLS terminates at the network edge), so an http-remote URL is STORED — the
-    // http-non-local signal is a non-blocking renderer warning, not a hard main-side block.
-    call(SETTINGS_CHANNELS.setProvider, {
-      provider: 'gateway',
-      baseURL: 'http://gateway.corp.example',
-    });
-    expect(call(SETTINGS_CHANNELS.getProvider)).toEqual({
-      provider: 'gateway',
-      baseURL: 'http://gateway.corp.example',
-    });
-    // … but a non-http(s) scheme is still rejected (a token can't ride a non-web scheme).
     expect(() =>
       call(SETTINGS_CHANNELS.setProvider, {
         provider: 'gateway',
-        baseURL: 'ftp://gateway.corp.example',
+        baseURL: 'http://gateway.corp.example',
       }),
     ).toThrow();
+    // … but NOT a valid https URL (so a handler that threw unconditionally would fail here).
+    expect(() =>
+      call(SETTINGS_CHANNELS.setProvider, {
+        provider: 'gateway',
+        baseURL: 'https://corp.example/v1',
+      }),
+    ).not.toThrow();
+  });
+
+  it('stores a remote http gateway baseURL ONLY under the insecure-HTTP override', () => {
+    const prior = process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP;
+    process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = '1';
+    try {
+      setup();
+      call(SETTINGS_CHANNELS.setProvider, {
+        provider: 'gateway',
+        baseURL: 'http://gateway.corp.internal',
+      });
+      expect(call(SETTINGS_CHANNELS.getProvider)).toEqual({
+        provider: 'gateway',
+        baseURL: 'http://gateway.corp.internal',
+      });
+    } finally {
+      if (prior === undefined) {
+        delete process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP;
+      } else {
+        process.env.MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP = prior;
+      }
+    }
   });
 });
 

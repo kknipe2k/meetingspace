@@ -1,0 +1,13 @@
+# Keep GitHub Actions current and maintain their pinned commit SHAs (hardening finding: the
+# workflow `uses:` were major-tag pinned, not SHA-pinned). Once an action is pinned to a SHA,
+# Dependabot bumps the SHA + the version comment on each new release, so the pins never go stale.
+# npm dependency advisories are covered separately by GitHub's Dependabot security updates (a repo
+# setting); we scope version-updates here to Actions to avoid day-to-day PR noise.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
