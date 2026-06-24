@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -38,5 +38,13 @@ describe('ModelPicker', () => {
     );
 
     expect(onChange).toHaveBeenCalledWith('claude-opus-4-8');
+  });
+
+  it('snaps an out-of-catalog selection to a valid model (stale-pref guard)', async () => {
+    const onChange = vi.fn();
+    // A raw gateway id saved by an older build is no longer in the catalog → reconcile to the default.
+    render(<ModelPicker model="us.anthropic.claude-3-5-sonnet-stale" onChange={onChange} />);
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(DEFAULT_GENERATION_MODEL));
   });
 });

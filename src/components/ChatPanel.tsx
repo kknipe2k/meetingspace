@@ -227,6 +227,20 @@ export function ChatPanel({
     }
   }, [isStreaming, elapsedMs, show, dismiss]);
 
+  // Stale / out-of-catalog selection guard: if the persisted chat model isn't in the active catalog
+  // (a raw gateway id saved by an older build, or after the gateway curation changed), snap to a
+  // valid option and persist it — so the dropdown never displays one model while SENDING another, and
+  // main never silently defaults the pick (audit bugs 1+2). Fires once: the snapped id is in the
+  // catalog, so it won't re-fire.
+  useEffect(() => {
+    if (model && models.length > 0 && !models.some((option) => option.id === model)) {
+      const preferred = models.find((option) => option.id === DEFAULT_CHAT_MODEL) ?? models[0];
+      if (preferred) {
+        onModelChange?.(preferred.id);
+      }
+    }
+  }, [model, models, onModelChange]);
+
   const selectedModel = model ?? DEFAULT_CHAT_MODEL;
   const canSend = draft.trim().length > 0 && !isStreaming;
 

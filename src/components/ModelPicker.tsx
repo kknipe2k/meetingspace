@@ -1,4 +1,6 @@
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
+
+import { DEFAULT_GENERATION_MODEL } from '@shared/models';
 
 import { useModelCatalog } from '../hooks/useModelCatalog';
 
@@ -19,6 +21,19 @@ export interface ModelPickerProps {
  */
 export function ModelPicker({ model, onChange, disabled = false }: ModelPickerProps): ReactElement {
   const { models } = useModelCatalog();
+  // Stale / out-of-catalog selection guard (same as chat): if the persisted generation model isn't in
+  // the active catalog (a raw gateway id from an older build, or after the gateway curation changed),
+  // snap to a valid option and persist it — so the dropdown never shows one model while generation
+  // sends another, and main never silently defaults the pick.
+  useEffect(() => {
+    if (model && models.length > 0 && !models.some((option) => option.id === model)) {
+      const preferred =
+        models.find((option) => option.id === DEFAULT_GENERATION_MODEL) ?? models[0];
+      if (preferred) {
+        onChange(preferred.id);
+      }
+    }
+  }, [model, models, onChange]);
   return (
     <div className="model-picker">
       <label className="model-picker-label" htmlFor="generation-model">

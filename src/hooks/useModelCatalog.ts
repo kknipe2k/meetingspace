@@ -4,6 +4,7 @@ import type { CatalogModel } from '@shared/types';
 import { STATIC_CATALOG } from '@shared/models';
 
 import { catalogClient, type CatalogClient } from '../ipc/client';
+import { subscribeCatalogChanged } from '../ipc/catalog-events';
 
 /*
  * The dynamic model catalog hook (M06.D, ADR-0021; closes F22/TD-012). The SINGLE source of the
@@ -30,6 +31,19 @@ export function useModelCatalog(client: CatalogClient = catalogClient): UseModel
     return () => {
       active = false;
     };
+  }, [client]);
+
+  // Re-pull when the catalog changes elsewhere (e.g. the gateway curation was just saved in
+  // Settings), so this picker reflects it without a manual refresh. main's cache was already
+  // refreshed by the save site, so list() returns the new set.
+  useEffect(() => {
+    return subscribeCatalogChanged(() => {
+      void client.list().then((live) => {
+        if (live.length > 0) {
+          setModels(live);
+        }
+      });
+    });
   }, [client]);
 
   const refresh = useCallback(() => {

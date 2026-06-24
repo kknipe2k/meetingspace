@@ -22,6 +22,8 @@ import {
   type UsageClient,
 } from '../ipc/client';
 
+import { notifyCatalogChanged } from '../ipc/catalog-events';
+
 import { Modal } from './Modal';
 import { StorageMeter } from './StorageMeter';
 
@@ -274,7 +276,10 @@ export function SettingsModal({
     if (saved === undefined) {
       return;
     }
-    void catalogClient.refresh();
+    // Refresh main's provider-scoped cache to the new curation, then nudge every open picker (chat +
+    // white paper) to re-pull it — so the dropdowns update immediately, with no manual refresh.
+    await catalogClient.refresh();
+    notifyCatalogChanged();
     show({ variant: 'info', message: 'Model list saved.' });
   }, [client, selectedModelIds, surface, show]);
 

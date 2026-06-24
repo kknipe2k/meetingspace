@@ -74,4 +74,18 @@ describe('Chat model selection', () => {
     expect(settings.setPrefs).toHaveBeenCalledWith({ chatModel: 'claude-opus-4-8' });
     await waitFor(() => expect(picker).toHaveValue('claude-opus-4-8'));
   });
+
+  it('snaps a stale (out-of-catalog) chat-model pref to a valid model and persists it', async () => {
+    // A raw gateway id saved by an older build (the flooded picker) is no longer a catalog tier, so
+    // the panel snaps it to the chat default and persists — the dropdown never shows one model while
+    // chat sends another (audit bugs 1+2).
+    const settings = fakeSettings({ chatModel: 'us.anthropic.claude-3-5-sonnet-stale-v2:0' });
+    render(<LLMPanel session={SESSION} settingsClient={settings} />);
+
+    await waitFor(() =>
+      expect(settings.setPrefs).toHaveBeenCalledWith({ chatModel: 'claude-haiku-4-5' }),
+    );
+    const picker = await screen.findByRole('combobox', MODEL_PICKER);
+    await waitFor(() => expect(picker).toHaveValue('claude-haiku-4-5'));
+  });
 });
