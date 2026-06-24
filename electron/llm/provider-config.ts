@@ -5,7 +5,7 @@ import type {
   AnthropicClientLike,
   StreamRequest,
 } from './anthropic-client';
-import { mapAnthropicError } from './errors';
+import { LlmServiceError, mapAnthropicError } from './errors';
 
 /*
  * The provider seam (M07.D; REVIEW-V11 F19). The narrow `streamMessage` interface is the
@@ -121,9 +121,26 @@ export function selectClientFactory(
     });
     const wrapped: AnthropicClientLike = {
       async streamMessage(request, onChunk) {
+        const mapped = toGatewayModelRequest(request);
         try {
-          return await client.streamMessage(toGatewayModelRequest(request), onChunk);
+          return await client.streamMessage(mapped, onChunk);
         } catch (error) {
+          // Diagnostic (key-free; main.log is redacted): the typed mapping below collapses every raw
+          // gateway failure to a generic UNKNOWN, hiding WHY chat/generation failed. Log the gateway's
+          // REAL error first — the model we sent, the HTTP status, and the gateway's response detail —
+          // so a corporate-gateway user can read it in Help ▸ Open Logs Folder (main.log). This is what
+          // distinguishes "the gateway doesn't actually serve this model on the real inference path"
+          // (a 4xx — even when /v1/models or the ping claims it does) from an app-side request defect.
+          // No key or note content rides here: the message is the gateway's RESPONSE, not the request,
+          // and credential-shaped tokens are stripped by the console tee. App-typed errors (watchdog
+          // tiers, CANCELLED) are skipped — they're already explained.
+          if (!(error instanceof LlmServiceError)) {
+            const status = (error as { status?: number } | null)?.status;
+            const detail = (error as { message?: string } | null)?.message ?? String(error);
+            console.warn(
+              `[gateway] request failed — model=${mapped.model} status=${status ?? 'n/a'} detail=${detail}`,
+            );
+          }
           // Provider-conditional mapping: a raw connection failure becomes
           // GATEWAY_UNREACHABLE; LlmServiceErrors (timeouts, CANCELLED) pass through.
           throw mapAnthropicError(error, 'gateway');

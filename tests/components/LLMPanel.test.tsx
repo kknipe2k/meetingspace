@@ -81,4 +81,28 @@ describe('LLMPanel — white paper entry point', () => {
       await screen.findByRole('button', { name: /generate white paper/i }),
     ).toBeInTheDocument();
   });
+
+  it('uses one persisted model selection for chat and white-paper generation', async () => {
+    const setPrefs = vi.fn(async () => ({ selectedModel: 'claude-haiku-4-5' }));
+    const sharedSettings: SettingsApi = {
+      ...settings,
+      getPrefs: () => Promise.resolve({ selectedModel: 'claude-sonnet-4-6' }),
+      setPrefs,
+    };
+    render(<LLMPanel session={SESSION} settingsClient={sharedSettings} />);
+
+    const chatPicker = await screen.findByRole('combobox', { name: /chat model/i });
+    expect(chatPicker).toHaveValue('claude-sonnet-4-6');
+
+    await userEvent.click(screen.getByRole('button', { name: 'White paper' }));
+    const generationPicker = await screen.findByRole('combobox', {
+      name: /generation model/i,
+    });
+    expect(generationPicker).toHaveValue('claude-sonnet-4-6');
+
+    await userEvent.selectOptions(generationPicker, 'claude-haiku-4-5');
+
+    expect(chatPicker).toHaveValue('claude-haiku-4-5');
+    expect(setPrefs).toHaveBeenCalledWith({ selectedModel: 'claude-haiku-4-5' });
+  });
 });

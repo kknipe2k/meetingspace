@@ -7,7 +7,7 @@
  * re-verify against Anthropic's pricing page whenever this is touched. Prompt
  * caching reuses the session/grounding prefix at ~10% of the input price.
  */
-import type { CatalogModel } from './types';
+import type { CatalogModel, GatewayModelProfile, GatewayModelVerification, Prefs } from './types';
 
 export interface ChatModelOption {
   readonly id: string;
@@ -88,4 +88,103 @@ export function modelLabel(model: string): string {
 export function maxOutputTokensFor(model: string): number | null {
   const match = CHAT_MODELS.find((option) => model === option.id || model.startsWith(option.id));
   return match ? match.maxOutputTokens : null;
+}
+
+// Conservative output ceiling for a curated gateway id we can't resolve to served metadata
+// (only hit if the gateway stops advertising a still-selected id) — the model-aware generation cap
+// reads this; a real served entry always supplies the live value.
+const GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS = 64000;
+
+export const EMPTY_GATEWAY_MODEL_PROFILE: GatewayModelProfile = {
+  models: [],
+  curatedModelIds: [],
+  verifications: {},
+};
+
+// Canonical persistence/cache key for a corporate gateway. Query strings and fragments are not
+// part of an API base URL and are intentionally excluded.
+export function normalizeGatewayProfileKey(baseURL: string): string {
+  try {
+    const url = new URL(baseURL.trim());
+    url.hash = '';
+    url.search = '';
+    url.hostname = url.hostname.toLowerCase();
+    if (
+      (url.protocol === 'https:' && url.port === '443') ||
+      (url.protocol === 'http:' && url.port === '80')
+    ) {
+      url.port = '';
+    }
+    const path = url.pathname.replace(/\/+$/, '');
+    return `${url.protocol}//${url.host}${path}`;
+  } catch {
+    return baseURL.trim().replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+export function gatewayModelProfile(prefs: Prefs, baseURL: string): GatewayModelProfile {
+  const stored = prefs.gatewayModelProfiles?.[normalizeGatewayProfileKey(baseURL)];
+  if (stored) {
+    return stored;
+  }
+  // One-time compatibility with the diagnostics branch's global gatewayModels preference.
+  return {
+    ...EMPTY_GATEWAY_MODEL_PROFILE,
+    curatedModelIds: [...(prefs.gatewayModels ?? [])],
+  };
+}
+
+export function prefsWithGatewayModelProfile(
+  prefs: Prefs,
+  baseURL: string,
+  profile: GatewayModelProfile,
+): Prefs {
+  const key = normalizeGatewayProfileKey(baseURL);
+  return {
+    gatewayModelProfiles: {
+      ...(prefs.gatewayModelProfiles ?? {}),
+      [key]: profile,
+    },
+  };
+}
+
+// The gateway picker's curated view (Gateway diagnostics). A corporate gateway's /v1/models can
+// advertise the whole Bedrock catalog (and silently serve 3.5 Sonnet for ids it doesn't map), so the
+// user curates which ids appear in the model dropdowns. Until they curate, the dropdowns use the
+// conservative Haiku/Sonnet fallback instead of the full advertised set. When curated, each chosen
+// id resolves to its saved metadata when present, else a best-effort synthesized entry so a
+// still-selected id never vanishes from the picker.
+export function curateGatewayModels(
+  served: readonly CatalogModel[],
+  curatedIds: readonly string[],
+): CatalogModel[] {
+  if (curatedIds.length === 0) {
+    // Before setup, keep the gateway default conservative: no Opus and no flood of every advertised
+    // Bedrock model. Explicitly verified/curated ids replace this fallback.
+    return STATIC_CATALOG.filter((model) => model.id !== 'claude-opus-4-8');
+  }
+  return curatedIds.map((id) => {
+    const match = served.find((model) => model.id === id);
+    return (
+      match ?? {
+        id,
+        label: modelLabel(id),
+        maxOutputTokens: maxOutputTokensFor(id) ?? GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS,
+      }
+    );
+  });
+}
+
+// Drop any model the diagnostics proved the gateway SUBSTITUTES (you ask for it, the governance layer
+// silently serves a different model). Such a model must never reach the chat/generation dropdowns —
+// selecting it is a lie. Only 'substituted' is hidden: 'unavailable'/'timeout' stay visible (a probe
+// failure is not proof the model is wrong), and an unverified id (no entry) stays visible too.
+export function accessibleGatewayModels(
+  models: readonly CatalogModel[],
+  verifications: Readonly<Record<string, GatewayModelVerification>>,
+): CatalogModel[] {
+  return models.filter((model) => {
+    const verification = verifications[model.id];
+    return !verification || verification.status !== 'substituted';
+  });
 }

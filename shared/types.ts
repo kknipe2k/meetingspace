@@ -86,6 +86,34 @@ export type GatewayPingResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: string };
 
+// One row of the gateway model diagnostic (Settings ▸ Gateway diagnostics). For a requested model
+// id, `served` is the model the gateway ACTUALLY answered with (its response `model`) — which
+// reveals a substitution (e.g. you ask for a Sonnet 4.x id and it serves 3.5 Sonnet). `ok` is false
+// with an `error` when the ping failed (no token, HTTP error, unreachable). Never carries the token.
+export interface GatewayModelDiagnosis {
+  readonly id: string;
+  readonly served: string | null;
+  readonly ok: boolean;
+  readonly status: 'available' | 'substituted' | 'unavailable' | 'timeout';
+  readonly testedAt: number;
+  readonly error?: string;
+}
+
+// Persisted, non-secret result of an explicit gateway model test. A credential replacement marks
+// existing records stale rather than deleting them, so the user can see what worked previously and
+// choose when to retest.
+export interface GatewayModelVerification extends GatewayModelDiagnosis {
+  readonly stale?: boolean;
+}
+
+// Gateway model setup is scoped to the normalized base URL. This prevents one company's curation
+// and test results from leaking into another gateway configuration on the same machine.
+export interface GatewayModelProfile {
+  readonly models: readonly CatalogModel[];
+  readonly curatedModelIds: readonly string[];
+  readonly verifications: Readonly<Record<string, GatewayModelVerification>>;
+}
+
 // The LLM backend the app talks to (M07.D; REVIEW-V11 F19). `anthropic` is the direct
 // API (`sk-ant-` x-api-key). `gateway` is a corporate proxy reached over a base URL with
 // an `sk-` BEARER token (the corp credential routes to Bedrock BEHIND the gateway, but the
@@ -136,6 +164,9 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 // `windowState`/`zoomFactor`/`themePreference` are the M06.A desktop-convention state (window
 // geometry, the persisted View-menu zoom, the appearance choice), all non-secret.
 export interface Prefs {
+  // Canonical model selection shared by chat and document generation. The two legacy fields below
+  // remain readable for migration from older builds, but new writes use selectedModel.
+  readonly selectedModel?: string;
   readonly chatModel?: string;
   readonly generationModel?: string;
   readonly provider?: ProviderConfig;
@@ -150,6 +181,15 @@ export interface Prefs {
   // M06.E: set once the first-run onboarding has been completed OR skipped, so the welcome flow
   // appears exactly once (gated with hasKey by shouldShowOnboarding). Non-secret like the rest.
   readonly onboardingSeen?: boolean;
+  // Gateway diagnostics (curated picker): the gateway's /v1/models can advertise the whole Bedrock
+  // catalog, and it silently serves 3.5 Sonnet for ids it doesn't map. This is the user-curated
+  // allowlist of gateway model ids to show in the chat + generation dropdowns. Empty/absent ⇒ not
+  // curated yet ⇒ the dropdowns fall back to the app's known tiers (de-flooded). Gateway-only;
+  // non-secret like the rest.
+  readonly gatewayModels?: readonly string[];
+  // Persisted model setup per normalized gateway base URL. Listing and testing are user-triggered;
+  // opening Settings reads this cache and performs no model network requests.
+  readonly gatewayModelProfiles?: Readonly<Record<string, GatewayModelProfile>>;
 }
 
 // A native-menu command the main process forwards to the renderer over app:command (M06.A).

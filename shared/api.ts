@@ -9,6 +9,7 @@ import type {
   ExportImagesResult,
   ExportRequest,
   ExportResult,
+  GatewayModelDiagnosis,
   GatewayPingResult,
   GenArtifactSaved,
   GenDocument,
@@ -130,6 +131,14 @@ export interface SettingsApi {
   setProvider(provider: ProviderConfig): Promise<ProviderConfig>;
   // M07.D follow-up: one-shot gateway connectivity check (Test connection).
   pingGateway(): Promise<GatewayPingResult>;
+  // Gateway diagnostics (curated picker): `listGatewayModels` returns the FULL set the gateway
+  // advertises (uncurated — what the diagnostic panel offers to choose from); `diagnoseGatewayModels`
+  // pings each given id and reports the model the gateway ACTUALLY serves, so a substitution is
+  // visible before you commit. Both are gateway-only and never carry the token. OPTIONAL on the
+  // interface so the many partial SettingsApi test fakes stay valid — the real preload/bridge + the
+  // renderer settingsClient always implement them (the SettingsModal gateway panel guards the call).
+  listGatewayModels?(): Promise<CatalogModel[]>;
+  diagnoseGatewayModels?(ids: readonly string[]): Promise<GatewayModelDiagnosis[]>;
 }
 
 /*

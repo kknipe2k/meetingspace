@@ -38,6 +38,8 @@ describe('createSettingsApi', () => {
         'getProvider',
         'setProvider',
         'pingGateway',
+        'listGatewayModels',
+        'diagnoseGatewayModels',
       ]),
     );
   });
@@ -91,6 +93,19 @@ describe('createSettingsApi', () => {
     expect(f.calls).toEqual([
       { channel: SETTINGS_CHANNELS.getPrefs, args: [] },
       { channel: SETTINGS_CHANNELS.setPrefs, args: [prefs] },
+    ]);
+  });
+
+  it('listGatewayModels / diagnoseGatewayModels target their channels (ids forwarded)', async () => {
+    const f = fakeInvoke([]);
+    const api = createSettingsApi(f.invoke);
+
+    await api.listGatewayModels?.();
+    await api.diagnoseGatewayModels?.(['model-a', 'model-b']);
+
+    expect(f.calls).toEqual([
+      { channel: SETTINGS_CHANNELS.listGatewayModels, args: [] },
+      { channel: SETTINGS_CHANNELS.diagnoseGatewayModels, args: [['model-a', 'model-b']] },
     ]);
   });
 });

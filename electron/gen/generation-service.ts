@@ -408,18 +408,25 @@ export function createGenerationService({
     // Cancelled by the time we'd persist? Write nothing (F11).
     throwIfCancelled(handlers);
 
+    // Persist + record the model the API ACTUALLY ANSWERED WITH (result.model), not the
+    // requested/selected id — so the badge and the usage row reflect what truly ran. This
+    // matches chat (llm-service records result.model) and, crucially, surfaces a gateway that
+    // substitutes a different model than requested (e.g. a corp Bedrock gateway that serves
+    // 3.5 Sonnet for an id it doesn't map). Fall back to the resolved request id only if the
+    // provider returned no model string.
+    const answeredModel = result.model || model;
     const saved = artifacts.saveArtifact({
       sessionId: request.sessionId,
       kind: 'focus',
       content: document,
       templateId: template.id,
-      model,
+      model: answeredModel,
     });
 
     usageRecorder?.record({
       sessionId: request.sessionId,
       kind: 'focus',
-      model,
+      model: answeredModel,
       usage: result.usage,
     });
 
@@ -760,15 +767,25 @@ export function createGenerationService({
     // the FOCUS intermediate stays (F11 / M07.C).
     throwIfCancelled(handlers);
     const html = assembleDocument({ title: 'White paper', css: cssText, body });
+    // Persist + record the model the API ACTUALLY ANSWERED WITH (the last pipeline call's
+    // result.model), not the requested id — same rationale as focus/chat: a truthful badge
+    // that reveals a gateway model substitution. Fall back to the resolved request id only if
+    // no call surfaced a model.
+    const answeredModel = lastResult?.model || model;
     const saved = artifacts.saveArtifact({
       sessionId: request.sessionId,
       kind: 'whitepaper',
       content: html,
       templateId: template.id,
-      model,
+      model: answeredModel,
     });
 
-    usageRecorder?.record({ sessionId: request.sessionId, kind: 'whitepaper', model, usage });
+    usageRecorder?.record({
+      sessionId: request.sessionId,
+      kind: 'whitepaper',
+      model: answeredModel,
+      usage,
+    });
 
     return {
       stopReason: lastResult?.stopReason ?? 'end_turn',
@@ -824,6 +841,10 @@ export function createGenerationService({
     // Cancelled by the time we'd persist? Write nothing (F11).
     throwIfCancelled(handlers);
 
+    // Persist + record the model the API ACTUALLY ANSWERED WITH (result.model), not the
+    // requested id — same rationale as focus/chat (truthful badge; surfaces a gateway
+    // substitution). Fall back to the resolved request id only if none was returned.
+    const answeredModel = result.model || model;
     const saved = artifacts.saveArtifact({
       sessionId: request.sessionId,
       kind: 'minutes',
@@ -831,13 +852,13 @@ export function createGenerationService({
       // Record the template that produced these minutes (it has an editable prompt now),
       // so the renderer can show the template chip on the persisted doc too.
       templateId: template.id,
-      model,
+      model: answeredModel,
     });
 
     usageRecorder?.record({
       sessionId: request.sessionId,
       kind: 'minutes',
-      model,
+      model: answeredModel,
       usage: result.usage,
     });
 

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AnthropicClientLike } from '../../electron/llm/anthropic-client';
 import { createAnthropicClient } from '../../electron/llm/anthropic-client';
@@ -250,5 +250,39 @@ describe('selectClientFactory — gateway error surfacing', () => {
     await expect(
       factory({ apiKey: 'sk-corp' }).streamMessage(STREAM, () => undefined),
     ).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
+  it('logs the gateway’s real status + detail before collapsing to UNKNOWN (diagnosable)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const factory = selectClientFactory(
+      config,
+      fakeFactoryThrowing({ status: 400, message: 'model not served on this gateway' }),
+    );
+
+    await expect(
+      factory({ apiKey: 'sk-corp' }).streamMessage(STREAM, () => undefined),
+    ).rejects.toMatchObject({ code: 'UNKNOWN' });
+
+    const logged = warn.mock.calls.flat().map(String).join('\n');
+    expect(logged).toContain('[gateway] request failed');
+    expect(logged).toContain('model=claude-sonnet-4-6');
+    expect(logged).toContain('status=400');
+    expect(logged).toContain('model not served on this gateway');
+    warn.mockRestore();
+  });
+
+  it('does NOT log a diagnostic for an already-typed LlmServiceError (no double-reporting)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const factory = selectClientFactory(
+      config,
+      fakeFactoryThrowing(new LlmServiceError('CANCELLED')),
+    );
+
+    await expect(
+      factory({ apiKey: 'sk-corp' }).streamMessage(STREAM, () => undefined),
+    ).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

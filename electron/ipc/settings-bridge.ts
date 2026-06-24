@@ -1,5 +1,7 @@
 import type { SettingsApi } from '@shared/api';
 import type {
+  CatalogModel,
+  GatewayModelDiagnosis,
   GatewayPingResult,
   KeyStatus,
   Prefs,
@@ -30,5 +32,8 @@ export function createSettingsApi(invoke: IpcInvoke): SettingsApi {
     setProvider: (provider) =>
       invoke(SETTINGS_CHANNELS.setProvider, provider) as Promise<ProviderConfig>,
     pingGateway: () => invoke(SETTINGS_CHANNELS.pingGateway) as Promise<GatewayPingResult>,
+    listGatewayModels: () => invoke(SETTINGS_CHANNELS.listGatewayModels) as Promise<CatalogModel[]>,
+    diagnoseGatewayModels: (ids) =>
+      invoke(SETTINGS_CHANNELS.diagnoseGatewayModels, ids) as Promise<GatewayModelDiagnosis[]>,
   };
 }

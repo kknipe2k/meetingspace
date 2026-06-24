@@ -15,6 +15,7 @@ import {
   noteClient as defaultNoteClient,
   usageClient as defaultUsageClient,
   type LlmClient,
+  type CatalogClient,
   type UsageClient,
 } from '../ipc/client';
 import { useChat, type ChatMessage, type UseChatOptions } from '../hooks/useChat';
@@ -49,6 +50,8 @@ export interface ChatPanelProps {
   onNotesChanged?(): void;
   /** Injectable for tests; defaults to the real usage IPC client (passive counter, M06.D). */
   usageClient?: UsageClient;
+  /** Injectable for tests; defaults to the real provider-scoped model catalog. */
+  catalogClient?: CatalogClient;
   /** The chat scroll offset to restore for this session (F8; owned by LLMPanel above the remount). */
   initialScrollTop?: number;
   /** Report the chat scroll offset so the owner can persist + restore it per session (F8). */
@@ -123,6 +126,7 @@ export function ChatPanel({
   noteClient = defaultNoteClient,
   onNotesChanged,
   usageClient = defaultUsageClient,
+  catalogClient,
   initialScrollTop,
   onScrollChange,
   usageRefreshKey,
@@ -132,7 +136,7 @@ export function ChatPanel({
   const elapsedMs = useElapsed(isStreaming);
   const toasts = useToasts();
   const { surface } = useMutationToast();
-  const { models, refresh: refreshModels } = useModelCatalog();
+  const { models, status: catalogStatus, refresh: refreshModels } = useModelCatalog(catalogClient);
   const { summary, refresh: refreshUsage } = useUsageCounter(sessionId, usageClient);
   const [draft, setDraft] = useState('');
   const [savedIds, setSavedIds] = useState<readonly string[]>([]);
@@ -227,6 +231,33 @@ export function ChatPanel({
     }
   }, [isStreaming, elapsedMs, show, dismiss]);
 
+  // Stale / out-of-catalog selection guard: if the persisted chat model isn't in the active catalog
+  // (a raw gateway id saved by an older build, or after the gateway curation changed), snap to a
+  // valid option and persist it — so the dropdown never displays one model while SENDING another, and
+  // main never silently defaults the pick (audit bugs 1+2). Fires once: the snapped id is in the
+  // catalog, so it won't re-fire.
+  useEffect(() => {
+    if (
+      catalogStatus === 'ready' &&
+      model &&
+      models.length > 0 &&
+      !models.some((option) => option.id === model)
+    ) {
+      const preferred = models.find((option) => option.id === DEFAULT_CHAT_MODEL) ?? models[0];
+      if (preferred) {
+        onModelChange?.(preferred.id);
+      }
+    }
+  }, [catalogStatus, model, models, onModelChange]);
+
+  const handleRefreshModels = async (): Promise<void> => {
+    const ok = await refreshModels();
+    show({
+      variant: ok ? 'info' : 'error',
+      message: ok ? 'Model list refreshed.' : "Couldn't refresh the model list.",
+    });
+  };
+
   const selectedModel = model ?? DEFAULT_CHAT_MODEL;
   const canSend = draft.trim().length > 0 && !isStreaming;
 
@@ -300,9 +331,14 @@ export function ChatPanel({
           className="btn-icon chat-model-refresh"
           aria-label="Refresh model list"
           title="Refresh model list"
-          onClick={() => refreshModels()}
+          aria-busy={catalogStatus === 'refreshing'}
+          disabled={catalogStatus === 'refreshing'}
+          data-refreshing={catalogStatus === 'refreshing' ? 'true' : 'false'}
+          onClick={() => void handleRefreshModels()}
         >
-          ↻
+          <span className="chat-model-refresh-icon" aria-hidden="true">
+            ↻
+          </span>
         </button>
       </div>
 
