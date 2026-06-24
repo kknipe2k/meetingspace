@@ -2,6 +2,10 @@
 
 Notable changes, newest first.
 
+## 1.3.1 — 2026-06-24
+
+- **Build-attribution placement:** edited the placement of the Claude build attribution — it no longer appears in the in-app About dialog or the first-run onboarding screen (it remains in the project README).
+
 ## 1.3.0 — 2026-06-24
 
 - **Truthful gateway model tests:** the Settings ▸ Gateway models diagnostic now probes each model the same way chat does (a real streaming request), so it detects when a corporate governance layer silently **substitutes** a model — e.g. you select Opus but the gateway serves Sonnet. The previous lightweight non-streaming "ping" slipped past that redirect and wrongly reported substituted models as available.

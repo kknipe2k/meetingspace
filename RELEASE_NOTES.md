@@ -30,9 +30,7 @@ You'll need your own Anthropic API key for the Claude features (chat / white pap
 
 ## ✨ What's new in __VERSION__
 
-- **Truthful gateway model tests:** the Settings ▸ Gateway models diagnostic now tests each model the same way chat does (a real streaming request), so it catches when a corporate gateway silently **substitutes** a model — e.g. you pick Opus but it serves Sonnet. The old lightweight "ping" slipped past that redirect and wrongly showed substituted models as available.
-- **Substituted models drop out of the pickers:** a model the gateway proves it swaps no longer appears in the chat or white-paper dropdowns, so you can't pick a model the gateway won't actually use. Models that pass stay selectable.
-- **Test all + clearer results:** a new **Test all** button checks every advertised model at once; available models show green, substituted or unavailable ones show red and name what was actually served. The diagnostic now covers up to 200 models (was 25).
-- Includes everything from 1.2.x: corporate AWS Bedrock **gateway** support (via your company proxy), HTTPS-by-default, **Test connection**, and the gateway **model list**.
+- **Build-attribution placement:** the Claude build attribution no longer appears in the in-app About dialog or the first-run screen.
+- Includes everything from 1.3.0: truthful gateway model tests (a real streaming probe that catches when the gateway silently **substitutes** a model), substituted models hidden from the chat and white-paper pickers, the **Test all** button, and the wider 200-model diagnostic.
 
 Full details in CHANGELOG.md.
