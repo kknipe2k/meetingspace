@@ -83,16 +83,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          tag="test-gateway-diagnostics"
+          tag="test-gateway-diagnostics-${{ github.run_number }}"
           mkdir -p upload
           find artifacts -type f -exec cp {} upload/ \;
           echo "Assets:"
           ls -1 upload
-          # Replace any previous test build so there is exactly one, pointing at this commit.
-          gh release delete "$tag" --yes --cleanup-tag || true
+          # A UNIQUE tag per run: this repo enforces IMMUTABLE releases, so a fixed tag can't be
+          # reused — delete+recreate is rejected once the tag has pinned an immutable release
+          # ("tag_name was used by an immutable release"). Each build publishes its own fresh
+          # prerelease instead.
           gh release create "$tag" upload/* \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "MeetingSpace — gateway diagnostics TEST build" \
+            --title "MeetingSpace gateway diagnostics — test.${{ github.run_number }}" \
             --notes "Unofficial TEST build from branch claude/gallant-cray-8lie9i (commit ${GITHUB_SHA}). Includes Settings ▸ Gateway models (diagnostics + curated picker) and the response-model badge fix. NOT an official release — do not treat as Latest. Windows: MeetingSpace-*-win.zip (portable, no install) or the Setup .exe. macOS: the .dmg / .zip matching your chip. Unsigned — first launch needs the one-time SmartScreen (Windows) / Gatekeeper (macOS) bypass."
           echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
