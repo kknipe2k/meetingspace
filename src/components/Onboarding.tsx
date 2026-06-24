@@ -133,10 +133,6 @@ export function Onboarding({
         />
       </section>
 
-      <p className="onboarding-disclosure settings-help">
-        MeetingSpace is built with Claude Code under the Build Framework methodology.
-      </p>
-
       <div className="settings-actions onboarding-actions">
         <button
           type="button"

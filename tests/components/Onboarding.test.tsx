@@ -57,10 +57,9 @@ function renderOnboarding(f: ReturnType<typeof fakes>) {
 }
 
 describe('Onboarding', () => {
-  it('welcomes the user and carries the AI-assistance note', () => {
+  it('welcomes the user', () => {
     renderOnboarding(fakes());
     expect(screen.getByRole('heading', { name: /welcome to meetingspace/i })).toBeInTheDocument();
-    expect(screen.getByText(/built with Claude Code/i)).toBeInTheDocument();
   });
 
   it('Get started: saves the entered key, seeds the sample space, persists the seen flag, completes', async () => {
