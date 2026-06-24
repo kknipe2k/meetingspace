@@ -7,7 +7,7 @@
  * re-verify against Anthropic's pricing page whenever this is touched. Prompt
  * caching reuses the session/grounding prefix at ~10% of the input price.
  */
-import type { CatalogModel } from './types';
+import type { CatalogModel, GatewayModelProfile, Prefs } from './types';
 
 export interface ChatModelOption {
   readonly id: string;
@@ -95,19 +95,73 @@ export function maxOutputTokensFor(model: string): number | null {
 // reads this; a real served entry always supplies the live value.
 const GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS = 64000;
 
+export const EMPTY_GATEWAY_MODEL_PROFILE: GatewayModelProfile = {
+  models: [],
+  curatedModelIds: [],
+  verifications: {},
+};
+
+// Canonical persistence/cache key for a corporate gateway. Query strings and fragments are not
+// part of an API base URL and are intentionally excluded.
+export function normalizeGatewayProfileKey(baseURL: string): string {
+  try {
+    const url = new URL(baseURL.trim());
+    url.hash = '';
+    url.search = '';
+    url.hostname = url.hostname.toLowerCase();
+    if (
+      (url.protocol === 'https:' && url.port === '443') ||
+      (url.protocol === 'http:' && url.port === '80')
+    ) {
+      url.port = '';
+    }
+    const path = url.pathname.replace(/\/+$/, '');
+    return `${url.protocol}//${url.host}${path}`;
+  } catch {
+    return baseURL.trim().replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+export function gatewayModelProfile(prefs: Prefs, baseURL: string): GatewayModelProfile {
+  const stored = prefs.gatewayModelProfiles?.[normalizeGatewayProfileKey(baseURL)];
+  if (stored) {
+    return stored;
+  }
+  // One-time compatibility with the diagnostics branch's global gatewayModels preference.
+  return {
+    ...EMPTY_GATEWAY_MODEL_PROFILE,
+    curatedModelIds: [...(prefs.gatewayModels ?? [])],
+  };
+}
+
+export function prefsWithGatewayModelProfile(
+  prefs: Prefs,
+  baseURL: string,
+  profile: GatewayModelProfile,
+): Prefs {
+  const key = normalizeGatewayProfileKey(baseURL);
+  return {
+    gatewayModelProfiles: {
+      ...(prefs.gatewayModelProfiles ?? {}),
+      [key]: profile,
+    },
+  };
+}
+
 // The gateway picker's curated view (Gateway diagnostics). A corporate gateway's /v1/models can
 // advertise the whole Bedrock catalog (and silently serve 3.5 Sonnet for ids it doesn't map), so the
-// user curates which ids appear in the model dropdowns. Until they curate (empty list), the
-// dropdowns fall back to the app's KNOWN TIERS (STATIC_CATALOG) instead of the full advertised set —
-// de-flooded. When curated, each chosen id resolves to its served metadata (label / maxOutputTokens)
-// when present, else a best-effort synthesized entry so a still-selected id never vanishes from the
-// picker. Pure + shared so it's the single source for both main (catalog filter) and its tests.
+// user curates which ids appear in the model dropdowns. Until they curate, the dropdowns use the
+// conservative Haiku/Sonnet fallback instead of the full advertised set. When curated, each chosen
+// id resolves to its saved metadata when present, else a best-effort synthesized entry so a
+// still-selected id never vanishes from the picker.
 export function curateGatewayModels(
   served: readonly CatalogModel[],
   curatedIds: readonly string[],
 ): CatalogModel[] {
   if (curatedIds.length === 0) {
-    return [...STATIC_CATALOG];
+    // Before setup, keep the gateway default conservative: no Opus and no flood of every advertised
+    // Bedrock model. Explicitly verified/curated ids replace this fallback.
+    return STATIC_CATALOG.filter((model) => model.id !== 'claude-opus-4-8');
   }
   return curatedIds.map((id) => {
     const match = served.find((model) => model.id === id);

@@ -51,11 +51,11 @@ describe('Chat model selection', () => {
     expect(picker).toHaveValue('claude-haiku-4-5');
   });
 
-  it('reflects the persisted chat-model pref on load', async () => {
+  it('reflects the persisted canonical model pref on load', async () => {
     render(
       <LLMPanel
         session={SESSION}
-        settingsClient={fakeSettings({ chatModel: 'claude-sonnet-4-6' })}
+        settingsClient={fakeSettings({ selectedModel: 'claude-sonnet-4-6' })}
       />,
     );
 
@@ -71,7 +71,7 @@ describe('Chat model selection', () => {
     const picker = await screen.findByRole('combobox', MODEL_PICKER);
     await user.selectOptions(picker, 'claude-opus-4-8');
 
-    expect(settings.setPrefs).toHaveBeenCalledWith({ chatModel: 'claude-opus-4-8' });
+    expect(settings.setPrefs).toHaveBeenCalledWith({ selectedModel: 'claude-opus-4-8' });
     await waitFor(() => expect(picker).toHaveValue('claude-opus-4-8'));
   });
 
@@ -79,13 +79,25 @@ describe('Chat model selection', () => {
     // A raw gateway id saved by an older build (the flooded picker) is no longer a catalog tier, so
     // the panel snaps it to the chat default and persists — the dropdown never shows one model while
     // chat sends another (audit bugs 1+2).
-    const settings = fakeSettings({ chatModel: 'us.anthropic.claude-3-5-sonnet-stale-v2:0' });
+    const settings = fakeSettings({ selectedModel: 'us.anthropic.claude-3-5-sonnet-stale-v2:0' });
     render(<LLMPanel session={SESSION} settingsClient={settings} />);
 
     await waitFor(() =>
-      expect(settings.setPrefs).toHaveBeenCalledWith({ chatModel: 'claude-haiku-4-5' }),
+      expect(settings.setPrefs).toHaveBeenCalledWith({ selectedModel: 'claude-haiku-4-5' }),
     );
     const picker = await screen.findByRole('combobox', MODEL_PICKER);
     await waitFor(() => expect(picker).toHaveValue('claude-haiku-4-5'));
+  });
+
+  it('migrates a legacy per-surface preference into the shared in-memory selection', async () => {
+    render(
+      <LLMPanel
+        session={SESSION}
+        settingsClient={fakeSettings({ generationModel: 'claude-sonnet-4-6' })}
+      />,
+    );
+
+    const picker = await screen.findByRole('combobox', MODEL_PICKER);
+    await waitFor(() => expect(picker).toHaveValue('claude-sonnet-4-6'));
   });
 });

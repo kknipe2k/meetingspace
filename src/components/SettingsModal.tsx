@@ -3,13 +3,20 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
 import type {
   CatalogModel,
-  GatewayModelDiagnosis,
+  GatewayModelProfile,
+  GatewayModelVerification,
   GatewayPingResult,
   KeyStatus,
+  Prefs,
   PricingEntry,
   ProviderConfig,
   ProviderId,
 } from '@shared/types';
+import {
+  curateGatewayModels,
+  gatewayModelProfile,
+  prefsWithGatewayModelProfile,
+} from '@shared/models';
 
 import { useMutationToast } from '../hooks/useMutationToast';
 import { useToasts } from '../hooks/useToasts';
@@ -39,6 +46,31 @@ export interface SettingsModalProps {
 // Test-connection state: a testing-in-flight marker, then the typed ping result.
 type PingState = { readonly testing: true } | GatewayPingResult;
 
+function formatTestedAt(testedAt: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(testedAt));
+}
+
+function verificationLabel(result: GatewayModelVerification): string {
+  const date = formatTestedAt(result.testedAt);
+  if (result.stale) {
+    return `Needs retest - last tested ${date}`;
+  }
+  if (result.status === 'available') {
+    return `Available - verified ${date}`;
+  }
+  if (result.status === 'substituted') {
+    return `Available as ${result.served ?? 'another model'} - verified ${date}`;
+  }
+  if (result.status === 'timeout') {
+    return `Timed out - tested ${date}`;
+  }
+  return `Unavailable - tested ${date}${result.error ? `: ${result.error}` : ''}`;
+}
+
 /*
  * The settings surface (M03.A; M07.D adds the provider switch). Enter the credential for the
  * active provider, see its STATUS, clear it. The secret is masked on entry, sent one-way to
@@ -60,6 +92,7 @@ export function SettingsModal({
 }: SettingsModalProps): ReactElement {
   const [provider, setProvider] = useState<ProviderId>('anthropic');
   const [gatewayUrl, setGatewayUrl] = useState('');
+  const [savedGatewayUrl, setSavedGatewayUrl] = useState('');
   const [proxyUrl, setProxyUrl] = useState('');
   const [pingResult, setPingResult] = useState<PingState | null>(null);
   const [status, setStatus] = useState<KeyStatus | null>(null);
@@ -71,11 +104,33 @@ export function SettingsModal({
   // selection (seeded from the saved curation), and the per-id "what does it actually serve" results.
   const [gatewayModels, setGatewayModels] = useState<CatalogModel[]>([]);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
-  const [modelDiagnosis, setModelDiagnosis] = useState<Record<string, GatewayModelDiagnosis>>({});
+  const [savedModelIds, setSavedModelIds] = useState<string[]>([]);
+  const [modelDiagnosis, setModelDiagnosis] = useState<Record<string, GatewayModelVerification>>(
+    {},
+  );
   const [loadingModels, setLoadingModels] = useState(false);
   const [testingModels, setTestingModels] = useState(false);
+  const [modelListError, setModelListError] = useState<string | null>(null);
+  const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
   const { surface } = useMutationToast();
   const { show } = useToasts();
+
+  const applyGatewayProfile = useCallback((baseURL: string, prefs: Prefs): void => {
+    const profile = gatewayModelProfile(prefs, baseURL);
+    const curated =
+      profile.curatedModelIds.length > 0
+        ? curateGatewayModels(profile.models, profile.curatedModelIds)
+        : [];
+    setGatewayModels([
+      ...profile.models,
+      ...curated.filter((model) => !profile.models.some((saved) => saved.id === model.id)),
+    ]);
+    setSelectedModelIds([...profile.curatedModelIds]);
+    setSavedModelIds([...profile.curatedModelIds]);
+    setModelDiagnosis({ ...profile.verifications });
+    setModelListError(null);
+    setModelSelectionError(null);
+  }, []);
 
   // Config-driven pricing (M06.D, ADR-0021): the price list is read from the updatable pricing
   // config main-side — NEVER hardcoded in this component.
@@ -103,55 +158,37 @@ export function SettingsModal({
   useEffect(() => {
     let active = true;
     void (async () => {
-      const config = await client.getProvider();
+      const [config, prefs] = await Promise.all([client.getProvider(), client.getPrefs()]);
       if (!active) {
         return;
       }
       setProvider(config.provider);
       if (config.provider === 'gateway') {
         setGatewayUrl(config.baseURL);
+        setSavedGatewayUrl(config.baseURL);
         setProxyUrl(config.proxyUrl ?? '');
+        applyGatewayProfile(config.baseURL, prefs);
       }
       setStatus(await client.keyStatus(config.provider));
     })();
     return () => {
       active = false;
     };
-  }, [client]);
-
-  // Gateway diagnostics: once the gateway has a token, load the FULL advertised model list and the
-  // saved curation, so the panel shows every served model with the user's current picks checked.
-  // Gateway-only; reruns when the credential status flips (save/clear) so the list reflects reality.
-  useEffect(() => {
-    if (provider !== 'gateway' || !(status?.hasKey ?? false)) {
-      return undefined;
-    }
-    let active = true;
-    setLoadingModels(true);
-    void Promise.all([client.listGatewayModels?.() ?? Promise.resolve([]), client.getPrefs()])
-      .then(([served, prefs]) => {
-        if (!active) {
-          return;
-        }
-        setGatewayModels(served);
-        setSelectedModelIds([...(prefs.gatewayModels ?? [])]);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) {
-          setLoadingModels(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [client, provider, status]);
+  }, [applyGatewayProfile, client]);
 
   // Before the first status load, assume encryption is available (so we don't flash an
   // error) and no key (so we don't claim one exists).
   const encryptionAvailable = status?.encryptionAvailable ?? true;
   const hasKey = status?.hasKey ?? false;
   const canSave = encryptionAvailable && draft.length > 0;
+
+  const persistGatewayProfile = useCallback(
+    async (baseURL: string, profile: GatewayModelProfile): Promise<Prefs> => {
+      const prefs = await client.getPrefs();
+      return client.setPrefs(prefsWithGatewayModelProfile(prefs, baseURL, profile));
+    },
+    [client],
+  );
 
   // Switching the picker: anthropic persists immediately (no URL needed); gateway defers
   // persistence to Save (it needs a validated base URL). The credential status reloads for
@@ -168,10 +205,14 @@ export function SettingsModal({
           () => client.setProvider({ provider: 'anthropic' }),
           "Couldn't switch provider.",
         );
+        notifyCatalogChanged();
+      } else {
+        setSavedGatewayUrl('');
+        setGatewayModels([]);
+        setSelectedModelIds([]);
+        setSavedModelIds([]);
+        setModelDiagnosis({});
       }
-      // The model catalog is provider-scoped (gateway serves a fixed set); invalidate the
-      // main-process cache so the picker reflects the active provider on its next read.
-      void catalogClient.refresh();
       await refresh(next);
     },
     [client, refresh, surface],
@@ -182,6 +223,7 @@ export function SettingsModal({
       return;
     }
     setProviderError(null);
+    let configuredGatewayUrl = savedGatewayUrl;
     if (provider === 'gateway') {
       // Persist the (main-side validated) provider config first; the token is NOT sent until the
       // gateway is configured. The base URL must be https (http only for localhost, or the explicit
@@ -194,9 +236,9 @@ export function SettingsModal({
         });
         if (saved2.provider === 'gateway') {
           setGatewayUrl(saved2.baseURL);
+          setSavedGatewayUrl(saved2.baseURL);
+          configuredGatewayUrl = saved2.baseURL;
         }
-        // Provider-scoped model cache: refresh so the picker shows the gateway's fixed set.
-        void catalogClient.refresh();
       } catch {
         setProviderError(
           'The gateway URL was not saved. Use an https:// URL (http:// is allowed only for localhost).',
@@ -211,10 +253,44 @@ export function SettingsModal({
     if (saved === undefined) {
       return; // the failure was surfaced; keep the draft so the user can retry
     }
+    if (provider === 'gateway' && saved.ok && configuredGatewayUrl) {
+      const prefs = await client.getPrefs();
+      const profile = gatewayModelProfile(prefs, configuredGatewayUrl);
+      const staleProfile: GatewayModelProfile = {
+        ...profile,
+        verifications: Object.fromEntries(
+          Object.entries(profile.verifications).map(([id, result]) => [
+            id,
+            { ...result, stale: true },
+          ]),
+        ),
+      };
+      const persisted = await surface(
+        () => persistGatewayProfile(configuredGatewayUrl, staleProfile),
+        "Couldn't update your saved model tests.",
+      );
+      if (persisted !== undefined) {
+        applyGatewayProfile(configuredGatewayUrl, persisted);
+      }
+      await catalogClient.refresh();
+      notifyCatalogChanged();
+    }
     // Drop the plaintext from renderer state the moment it is handed off.
     setDraft('');
     await refresh(provider);
-  }, [client, draft, encryptionAvailable, gatewayUrl, proxyUrl, provider, refresh, surface]);
+  }, [
+    applyGatewayProfile,
+    client,
+    draft,
+    encryptionAvailable,
+    gatewayUrl,
+    persistGatewayProfile,
+    proxyUrl,
+    provider,
+    refresh,
+    savedGatewayUrl,
+    surface,
+  ]);
 
   const handleClear = useCallback(async (): Promise<void> => {
     const ok = await surface(
@@ -240,10 +316,55 @@ export function SettingsModal({
 
   // Toggle a model in the working selection (the curated allowlist the dropdowns will show).
   const toggleModel = useCallback((id: string): void => {
+    setModelSelectionError(null);
     setSelectedModelIds((prev) =>
       prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id],
     );
   }, []);
+
+  // Refreshing the advertised list is explicit. Opening Settings only reads the persisted profile.
+  const handleRefreshGatewayModels = useCallback(async (): Promise<void> => {
+    if (!savedGatewayUrl) {
+      return;
+    }
+    setLoadingModels(true);
+    setModelListError(null);
+    try {
+      const models = (await client.listGatewayModels?.()) ?? [];
+      const profile: GatewayModelProfile = {
+        models,
+        curatedModelIds: savedModelIds,
+        verifications: modelDiagnosis,
+      };
+      const persisted = await surface(
+        () => persistGatewayProfile(savedGatewayUrl, profile),
+        "Couldn't save the refreshed model list.",
+      );
+      if (persisted !== undefined) {
+        applyGatewayProfile(savedGatewayUrl, persisted);
+        setSelectedModelIds([...selectedModelIds]);
+        await catalogClient.refresh();
+        notifyCatalogChanged();
+        show({ variant: 'info', message: 'Gateway model list refreshed.' });
+      }
+    } catch {
+      setModelListError(
+        "Couldn't load the gateway model list. Check the gateway, proxy, and token, then retry.",
+      );
+    } finally {
+      setLoadingModels(false);
+    }
+  }, [
+    applyGatewayProfile,
+    client,
+    modelDiagnosis,
+    persistGatewayProfile,
+    savedGatewayUrl,
+    savedModelIds,
+    selectedModelIds,
+    show,
+    surface,
+  ]);
 
   // Test the TICKED models: ping each and record the model the gateway actually serves (per row), so
   // a substitution (ask for Sonnet 4.x, get 3.5 Sonnet) is visible before the user commits.
@@ -252,25 +373,65 @@ export function SettingsModal({
       return;
     }
     setTestingModels(true);
+    setModelSelectionError(null);
     try {
       const results = (await client.diagnoseGatewayModels?.(selectedModelIds)) ?? [];
-      setModelDiagnosis((prev) => {
-        const next = { ...prev };
-        for (const result of results) {
-          next[result.id] = result;
-        }
-        return next;
-      });
+      const nextResults: Record<string, GatewayModelVerification> = { ...modelDiagnosis };
+      for (const result of results) {
+        nextResults[result.id] = { ...result, stale: false };
+      }
+      const profile: GatewayModelProfile = {
+        models: gatewayModels,
+        curatedModelIds: savedModelIds,
+        verifications: nextResults,
+      };
+      const persisted = await surface(
+        () => persistGatewayProfile(savedGatewayUrl, profile),
+        "Couldn't save the model test results.",
+      );
+      if (persisted !== undefined) {
+        applyGatewayProfile(savedGatewayUrl, persisted);
+        setSelectedModelIds([...selectedModelIds]);
+      }
+    } catch {
+      setModelSelectionError("Couldn't test the selected models. Please try again.");
     } finally {
       setTestingModels(false);
     }
-  }, [client, selectedModelIds]);
+  }, [
+    applyGatewayProfile,
+    client,
+    gatewayModels,
+    modelDiagnosis,
+    persistGatewayProfile,
+    savedGatewayUrl,
+    savedModelIds,
+    selectedModelIds,
+    surface,
+  ]);
 
-  // Persist the curated allowlist, then refresh the provider-scoped catalog so the chat + white-paper
-  // dropdowns immediately reflect the new selection (an empty selection reverts them to known tiers).
+  // Persist the verified allowlist, then refresh the provider-scoped catalog so both pickers update.
   const handleSaveModels = useCallback(async (): Promise<void> => {
+    const unverified = selectedModelIds.filter(
+      (id) =>
+        !savedModelIds.includes(id) &&
+        (!modelDiagnosis[id]?.ok || modelDiagnosis[id]?.stale === true),
+    );
+    if (selectedModelIds.length === 0) {
+      setModelSelectionError('Select at least one model.');
+      return;
+    }
+    if (unverified.length > 0) {
+      setModelSelectionError('Test newly selected models successfully before adding them.');
+      return;
+    }
+    const profile: GatewayModelProfile = {
+      models: gatewayModels,
+      curatedModelIds: selectedModelIds,
+      verifications: modelDiagnosis,
+    };
     const saved = await surface(
-      () => client.setPrefs({ gatewayModels: selectedModelIds }),
+      () => persistGatewayProfile(savedGatewayUrl, profile),
       "Couldn't save your model selection.",
     );
     if (saved === undefined) {
@@ -280,8 +441,19 @@ export function SettingsModal({
     // white paper) to re-pull it — so the dropdowns update immediately, with no manual refresh.
     await catalogClient.refresh();
     notifyCatalogChanged();
+    applyGatewayProfile(savedGatewayUrl, saved);
     show({ variant: 'info', message: 'Model list saved.' });
-  }, [client, selectedModelIds, surface, show]);
+  }, [
+    applyGatewayProfile,
+    gatewayModels,
+    modelDiagnosis,
+    persistGatewayProfile,
+    savedGatewayUrl,
+    savedModelIds,
+    selectedModelIds,
+    show,
+    surface,
+  ]);
 
   // Full backup (M06.C): export the whole store to one portable file. A cancelled save dialog is
   // silent; a success confirms the path. Errors route through surface().
@@ -475,25 +647,38 @@ export function SettingsModal({
         )}
       </section>
 
-      {isGateway && hasKey && (
+      {isGateway && hasKey && savedGatewayUrl && (
         <section className="settings-section" data-testid="settings-gateway-models">
           <h3 className="settings-subheading">Gateway models</h3>
           <p className="settings-help">
-            Your gateway advertises the models below. Tick the ones to show in the chat and
-            white-paper pickers, then <strong>Save models</strong>. Until you save a selection, the
-            pickers show the app’s known tiers (Haiku / Sonnet / Opus). Use{' '}
-            <strong>Test selected</strong> to see the model the gateway <em>actually</em> serves for
-            each pick — it may substitute a different one.
+            Your saved model list and test results stay on this device for this gateway. Refresh the
+            list or retest only when you choose. Newly selected models must pass a test before they
+            can be added to both the chat and white-paper pickers.
           </p>
+
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleRefreshGatewayModels()}
+              disabled={loadingModels || testingModels}
+            >
+              {loadingModels ? 'Refreshing list…' : 'Refresh model list'}
+            </button>
+          </div>
+
+          {modelListError && (
+            <p className="settings-error" role="alert" data-testid="settings-model-list-error">
+              {modelListError}
+            </p>
+          )}
 
           {loadingModels ? (
             <p className="settings-help" data-testid="settings-gateway-models-loading">
-              Loading the gateway’s model list…
+              Contacting the gateway’s model endpoint…
             </p>
           ) : gatewayModels.length === 0 ? (
-            <p className="settings-help">
-              The gateway returned no models from <code>/v1/models</code>.
-            </p>
+            <p className="settings-help">No model list is saved yet. Refresh the list to begin.</p>
           ) : (
             <ul className="settings-gateway-models">
               {gatewayModels.map((model) => {
@@ -512,16 +697,24 @@ export function SettingsModal({
                     </label>
                     {result && (
                       <span
-                        className={result.ok ? 'settings-help' : 'settings-error'}
+                        className={
+                          result.ok && !result.stale ? 'settings-model-status' : 'settings-error'
+                        }
                         data-testid="settings-gateway-model-served"
                       >
-                        {result.ok ? `→ serves ${result.served}` : `✗ ${result.error}`}
+                        {verificationLabel(result)}
                       </span>
                     )}
                   </li>
                 );
               })}
             </ul>
+          )}
+
+          {modelSelectionError && (
+            <p className="settings-error" role="alert" data-testid="settings-model-selection-error">
+              {modelSelectionError}
+            </p>
           )}
 
           <div className="settings-actions">
@@ -537,6 +730,7 @@ export function SettingsModal({
               type="button"
               className="btn btn-primary"
               onClick={() => void handleSaveModels()}
+              disabled={testingModels || loadingModels}
             >
               Save models
             </button>

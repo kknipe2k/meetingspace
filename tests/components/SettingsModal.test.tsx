@@ -53,9 +53,13 @@ function fakeClient(initial: KeyStatus) {
 
 // A gateway-configured client (provider=gateway, token saved) that also implements the diagnostics
 // surface, so the Gateway models panel renders and exercises list / test / save.
-function gatewayClient(served: CatalogModel[], diagnosis: GatewayModelDiagnosis[] = []) {
+function gatewayClient(
+  served: CatalogModel[],
+  diagnosis: GatewayModelDiagnosis[] = [],
+  initialPrefs: Prefs = {},
+) {
   let status: KeyStatus = { hasKey: true, encryptionAvailable: true };
-  let prefs: Prefs = {};
+  let prefs: Prefs = { ...initialPrefs };
   return {
     setKey: vi.fn(async () => ({ ok: true as const })),
     keyStatus: vi.fn(async () => status),
@@ -77,7 +81,13 @@ function gatewayClient(served: CatalogModel[], diagnosis: GatewayModelDiagnosis[
     diagnoseGatewayModels: vi.fn(async (ids: readonly string[]) =>
       diagnosis.length > 0
         ? diagnosis
-        : ids.map((id) => ({ id, served: `served-${id}`, ok: true })),
+        : ids.map((id) => ({
+            id,
+            served: id,
+            ok: true,
+            status: 'available' as const,
+            testedAt: 1_750_000_000_000,
+          })),
     ),
   };
 }
@@ -244,7 +254,7 @@ describe('SettingsModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('gateway models: lists advertised ids, persists a curated selection, and tests served models', async () => {
+  it('gateway models: loads on demand, persists tests, and saves verified selections', async () => {
     const user = userEvent.setup();
     const served: CatalogModel[] = [
       { id: 'anthropic.claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', maxOutputTokens: 8192 },
@@ -253,20 +263,104 @@ describe('SettingsModal', () => {
     const client = gatewayClient(served);
     render(<SettingsModal client={client} onClose={vi.fn()} />);
 
-    // The advertised models are listed (raw ids shown so the user can curate against the flood).
+    // Opening Settings is local-only: no model-list request and no diagnostic request.
     expect(await screen.findByTestId('settings-gateway-models')).toBeInTheDocument();
-    expect(client.listGatewayModels).toHaveBeenCalled();
+    expect(client.listGatewayModels).not.toHaveBeenCalled();
+    expect(client.diagnoseGatewayModels).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /refresh model list/i }));
+    expect(client.listGatewayModels).toHaveBeenCalledTimes(1);
     expect(screen.getByText('claude-sonnet-4-6')).toBeInTheDocument();
     expect(screen.getByText('anthropic.claude-3-5-sonnet')).toBeInTheDocument();
 
-    // Tick one and Save → persisted as the curated allowlist (drives both pickers).
+    // Test a newly selected model before adding it to both pickers.
     await user.click(screen.getByLabelText(/show claude sonnet 4\.6 in the model pickers/i));
-    await user.click(screen.getByRole('button', { name: /save models/i }));
-    expect(client.setPrefs).toHaveBeenCalledWith({ gatewayModels: ['claude-sonnet-4-6'] });
-
-    // Test selected → pings the ticked id and shows the model the gateway actually serves.
     await user.click(screen.getByRole('button', { name: /test selected/i }));
     expect(client.diagnoseGatewayModels).toHaveBeenCalledWith(['claude-sonnet-4-6']);
-    expect(await screen.findByTestId('settings-gateway-model-served')).toHaveTextContent(/serves/i);
+    expect(await screen.findByTestId('settings-gateway-model-served')).toHaveTextContent(
+      /available/i,
+    );
+
+    await user.click(screen.getByRole('button', { name: /save models/i }));
+    const prefs = await client.getPrefs();
+    expect(prefs.gatewayModelProfiles?.['https://corp.example']?.curatedModelIds).toEqual([
+      'claude-sonnet-4-6',
+    ]);
+    expect(
+      prefs.gatewayModelProfiles?.['https://corp.example']?.verifications['claude-sonnet-4-6']
+        ?.testedAt,
+    ).toBe(1_750_000_000_000);
+  });
+
+  it('restores a gateway-specific model selection and verification without retesting on open', async () => {
+    const model: CatalogModel = {
+      id: 'corp-model',
+      label: 'Corp Model',
+      maxOutputTokens: 32000,
+    };
+    const client = gatewayClient([], [], {
+      gatewayModelProfiles: {
+        'https://corp.example': {
+          models: [model],
+          curatedModelIds: [model.id],
+          verifications: {
+            [model.id]: {
+              id: model.id,
+              served: model.id,
+              ok: true,
+              status: 'available',
+              testedAt: 1_750_000_000_000,
+            },
+          },
+        },
+      },
+    });
+
+    render(<SettingsModal client={client} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('corp-model')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-gateway-model-served')).toHaveTextContent(/available/i);
+    expect(screen.getByLabelText(/show corp model/i)).toBeChecked();
+    expect(client.listGatewayModels).not.toHaveBeenCalled();
+    expect(client.diagnoseGatewayModels).not.toHaveBeenCalled();
+  });
+
+  it('marks saved verification results stale when the gateway token is replaced', async () => {
+    const model: CatalogModel = {
+      id: 'corp-model',
+      label: 'Corp Model',
+      maxOutputTokens: 32000,
+    };
+    const client = gatewayClient([], [], {
+      gatewayModelProfiles: {
+        'https://corp.example': {
+          models: [model],
+          curatedModelIds: [model.id],
+          verifications: {
+            [model.id]: {
+              id: model.id,
+              served: model.id,
+              ok: true,
+              status: 'available',
+              testedAt: 1_750_000_000_000,
+            },
+          },
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(<SettingsModal client={client} onClose={vi.fn()} />);
+    await screen.findByText('corp-model');
+
+    await user.type(screen.getByLabelText(/gateway token/i), 'replacement-token');
+    await user.click(screen.getByRole('button', { name: /save gateway/i }));
+
+    const prefs = await client.getPrefs();
+    expect(
+      prefs.gatewayModelProfiles?.['https://corp.example']?.verifications['corp-model']?.stale,
+    ).toBe(true);
+    expect(await screen.findByTestId('settings-gateway-model-served')).toHaveTextContent(
+      /needs retest/i,
+    );
   });
 });

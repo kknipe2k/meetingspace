@@ -884,6 +884,20 @@ body {
   box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
+.chat-model-refresh-icon {
+  display: inline-block;
+}
+
+.chat-model-refresh[data-refreshing='true'] .chat-model-refresh-icon {
+  animation: model-refresh-spin 800ms linear infinite;
+}
+
+@keyframes model-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Passive usage counter (M06.D, ADR-0021): a compact two-row, label-aligned readout under the
    composer. The label column is auto-width and the value column takes the rest; `display: contents`
    on the row lets each row's label + value participate in the shared grid so the two rows align.
@@ -1046,6 +1060,11 @@ body {
   color: var(--color-text-muted);
   font-size: calc(var(--text-xs) * 1rem);
   word-break: break-all;
+}
+
+.settings-model-status {
+  color: var(--color-text-muted);
+  font-size: calc(var(--text-xs) * 1rem);
 }
 
 /* Storage meter (M06.B / F28). The per-session breakdown is collapsible and scroll-bounded so a

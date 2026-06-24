@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { LlmApi, LlmStreamCallbacks } from '@shared/api';
-import type { LlmChatRequest, LlmDone, LlmErrorPayload } from '@shared/types';
+import type { CatalogModel, LlmChatRequest, LlmDone, LlmErrorPayload } from '@shared/types';
+import { STATIC_CATALOG } from '@shared/models';
+import type { CatalogClient } from '../../src/ipc/client';
 
 import { ChatPanel } from '../../src/components/ChatPanel';
 
@@ -89,6 +91,31 @@ async function ask(question: string): Promise<void> {
 }
 
 describe('ChatPanel', () => {
+  it('shows a real busy state while the model catalog refresh is running', async () => {
+    let resolveRefresh: (models: CatalogModel[]) => void = () => undefined;
+    const catalogClient: CatalogClient = {
+      list: vi.fn(async () => [...STATIC_CATALOG]),
+      refresh: vi.fn(
+        () =>
+          new Promise<CatalogModel[]>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      ),
+    };
+    render(<ChatPanel sessionId="s1" client={harness().client} catalogClient={catalogClient} />);
+    const refresh = screen.getByRole('button', { name: /refresh model list/i });
+
+    await userEvent.click(refresh);
+
+    expect(refresh).toBeDisabled();
+    expect(refresh).toHaveAttribute('aria-busy', 'true');
+    expect(refresh).toHaveAttribute('data-refreshing', 'true');
+
+    await act(async () => resolveRefresh([...STATIC_CATALOG]));
+    await waitFor(() => expect(refresh).toBeEnabled());
+    expect(refresh).toHaveAttribute('aria-busy', 'false');
+  });
+
   it('disables send until a non-blank question is typed', async () => {
     render(<ChatPanel sessionId="s1" client={harness().client} />);
 

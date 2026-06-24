@@ -6,7 +6,8 @@
  * the chat + white-paper dropdowns reflect a saved curation without a manual refresh. No IPC, no
  * key: it only triggers a re-fetch of already-public model metadata.
  */
-type CatalogListener = () => void;
+type CatalogSource = symbol;
+type CatalogListener = (source?: CatalogSource) => void;
 
 const listeners = new Set<CatalogListener>();
 
@@ -17,9 +18,9 @@ export function subscribeCatalogChanged(listener: CatalogListener): () => void {
   };
 }
 
-export function notifyCatalogChanged(): void {
+export function notifyCatalogChanged(source?: CatalogSource): void {
   // Snapshot so a listener that (un)subscribes during dispatch doesn't mutate the set mid-iteration.
   for (const listener of [...listeners]) {
-    listener();
+    listener(source);
   }
 }

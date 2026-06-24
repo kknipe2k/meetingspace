@@ -49,6 +49,12 @@ describe('PrefsStore', () => {
     expect(JSON.parse(readFileSync(prefsPath, 'utf8'))).toEqual({ chatModel: 'claude-haiku-4-5' });
   });
 
+  it('persists the canonical shared model preference', () => {
+    new PrefsStore(prefsPath).set({ selectedModel: 'corp-model' });
+
+    expect(new PrefsStore(prefsPath).get().selectedModel).toBe('corp-model');
+  });
+
   it('tolerates a corrupt prefs file by falling back to empty (never throws on get)', () => {
     writeFileSync(prefsPath, '{ this is not valid json');
 

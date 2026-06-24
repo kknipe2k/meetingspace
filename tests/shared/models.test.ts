@@ -5,10 +5,12 @@ import {
   curateGatewayModels,
   DEFAULT_CHAT_MODEL,
   DEFAULT_GENERATION_MODEL,
+  gatewayModelProfile,
   modelLabel,
-  STATIC_CATALOG,
+  normalizeGatewayProfileKey,
+  prefsWithGatewayModelProfile,
 } from '@shared/models';
-import type { CatalogModel } from '@shared/types';
+import type { CatalogModel, GatewayModelProfile } from '@shared/types';
 
 /*
  * The model catalog (M03.D; M04.C flips the generation default Opus -> Sonnet 4.6
@@ -58,8 +60,11 @@ describe('curateGatewayModels', () => {
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', maxOutputTokens: 64000 },
   ];
 
-  it('falls back to the known tiers when nothing is curated (de-flood)', () => {
-    expect(curateGatewayModels(served, [])).toEqual([...STATIC_CATALOG]);
+  it('falls back to the conservative non-Opus tiers when nothing is curated', () => {
+    expect(curateGatewayModels(served, []).map((model) => model.id)).toEqual([
+      'claude-haiku-4-5',
+      'claude-sonnet-4-6',
+    ]);
   });
 
   it('returns exactly the curated ids, in order, resolved from the served metadata', () => {
@@ -79,5 +84,31 @@ describe('curateGatewayModels', () => {
     expect(curateGatewayModels(served, ['ghost-model-x'])).toEqual([
       { id: 'ghost-model-x', label: modelLabel('ghost-model-x'), maxOutputTokens: 64000 },
     ]);
+  });
+});
+
+describe('gateway model profiles', () => {
+  it('normalizes equivalent gateway URLs to the same persistence key', () => {
+    expect(normalizeGatewayProfileKey('HTTPS://Corp.Example:443/v1/')).toBe(
+      'https://corp.example/v1',
+    );
+  });
+
+  it('stores and reads a profile by normalized gateway URL', () => {
+    const profile: GatewayModelProfile = {
+      models: [{ id: 'corp-model', label: 'Corp Model', maxOutputTokens: 32000 }],
+      curatedModelIds: ['corp-model'],
+      verifications: {},
+    };
+    const patch = prefsWithGatewayModelProfile({}, 'https://corp.example/v1/', profile);
+
+    expect(gatewayModelProfile(patch, 'https://CORP.example:443/v1')).toEqual(profile);
+  });
+
+  it('migrates the legacy global gatewayModels allowlist when no scoped profile exists', () => {
+    expect(
+      gatewayModelProfile({ gatewayModels: ['legacy-model'] }, 'https://corp.example')
+        .curatedModelIds,
+    ).toEqual(['legacy-model']);
   });
 });

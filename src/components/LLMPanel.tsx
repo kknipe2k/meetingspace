@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 
-import { DEFAULT_CHAT_MODEL, DEFAULT_GENERATION_MODEL } from '@shared/models';
+import { DEFAULT_CHAT_MODEL } from '@shared/models';
 import type { Session } from '@shared/types';
 
 import { useMutationToast } from '../hooks/useMutationToast';
@@ -38,12 +38,9 @@ export function LLMPanel({
   // Bumped when a generation run completes, signalling the (app-wide) chat usage counter to refresh
   // so generation spend appears without a reload (ADR-0022).
   const [usageToken, setUsageToken] = useState(0);
-  // Model prefs are non-secret (ADR-0008; generation default flipped to Sonnet at
-  // M04.C per ADR-0012): chat defaults to Haiku, generation to Sonnet, each
-  // overridden by its stored pref and persisted on change. Owned here so the pickers
-  // survive the session-keyed ChatPanel/GeneratedDocView remounts.
-  const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL);
-  const [generationModel, setGenerationModel] = useState<string>(DEFAULT_GENERATION_MODEL);
+  // One app-wide model selection drives both chat and document generation. Legacy per-surface
+  // preferences are read as a migration fallback, but every new change writes selectedModel.
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_CHAT_MODEL);
   const { surface } = useMutationToast();
 
   // F8 chat scroll retention (M06.A carry → M06.D). The per-session offsets live HERE, above the
@@ -62,11 +59,9 @@ export function LLMPanel({
       if (!active) {
         return;
       }
-      if (prefs.chatModel) {
-        setChatModel(prefs.chatModel);
-      }
-      if (prefs.generationModel) {
-        setGenerationModel(prefs.generationModel);
+      const storedModel = prefs.selectedModel ?? prefs.chatModel ?? prefs.generationModel;
+      if (storedModel) {
+        setSelectedModel(storedModel);
       }
       if (prefs.chatScroll) {
         chatScrollRef.current = { ...prefs.chatScroll };
@@ -98,20 +93,9 @@ export function LLMPanel({
 
   const handleModelChange = useCallback(
     (model: string): void => {
-      setChatModel(model);
+      setSelectedModel(model);
       void surface(
-        () => settings.setPrefs({ chatModel: model }),
-        "Couldn't save your model preference.",
-      );
-    },
-    [settings, surface],
-  );
-
-  const handleGenerationModelChange = useCallback(
-    (model: string): void => {
-      setGenerationModel(model);
-      void surface(
-        () => settings.setPrefs({ generationModel: model }),
+        () => settings.setPrefs({ selectedModel: model }),
         "Couldn't save your model preference.",
       );
     },
@@ -159,7 +143,7 @@ export function LLMPanel({
         <ChatPanel
           key={session.id}
           sessionId={session.id}
-          model={chatModel}
+          model={selectedModel}
           onModelChange={handleModelChange}
           onOpenSettings={() => setSettingsOpen(true)}
           onScrollChange={(top) => handleChatScroll(session.id, top)}
@@ -199,8 +183,8 @@ export function LLMPanel({
           <GeneratedDocView
             key={session.id}
             sessionId={session.id}
-            generationModel={generationModel}
-            onGenerationModelChange={handleGenerationModelChange}
+            generationModel={selectedModel}
+            onGenerationModelChange={handleModelChange}
             onGenerationComplete={() => setUsageToken((t) => t + 1)}
             {...(sessionName ? { sessionName } : {})}
           />

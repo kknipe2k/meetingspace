@@ -59,13 +59,21 @@ import { devEnv } from './dev-env';
 import { denyWindowOpen, installPermissionHandlers, shouldBlockNavigation } from './window-guards';
 import { registerSettingsHandlers } from './ipc/settings-handlers';
 import Anthropic from '@anthropic-ai/sdk';
-import type { CatalogModel, GatewayModelDiagnosis } from '@shared/types';
-import { curateGatewayModels, maxOutputTokensFor, modelLabel } from '@shared/models';
+import type { CatalogModel, GatewayModelDiagnosis, ProviderConfig } from '@shared/types';
+import {
+  curateGatewayModels,
+  gatewayModelProfile,
+  maxOutputTokensFor,
+  modelLabel,
+  normalizeGatewayProfileKey,
+  STATIC_CATALOG,
+} from '@shared/models';
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
 
 import { createAnthropicClient, type AnthropicClientFactory } from './llm/anthropic-client';
 import { providerSdkOptions, selectClientFactory } from './llm/provider-config';
 import { createModelCatalog } from './llm/model-catalog';
+import { diagnoseGatewayModels, GATEWAY_MODEL_TEST_TIMEOUT_MS } from './llm/gateway-diagnostics';
 import { createPricingConfig } from './llm/pricing-config';
 import { ChatStore } from './storage/chat-store';
 import { UsageStore } from './storage/usage-store';
@@ -646,6 +654,7 @@ app
           ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
           ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
           maxRetries: 0,
+          timeout: GATEWAY_MODEL_TEST_TIMEOUT_MS,
           fetch: netFetch,
         });
         await pingClient.messages.create({
@@ -668,25 +677,15 @@ app
     const pricingConfig = createPricingConfig(pricingFilePath());
     const usageStore = new UsageStore(db, { priceFor: (model) => pricingConfig.priceFor(model) });
 
-    // The dynamic model catalog (ADR-0021; closes F22/TD-012). The lister reads the ACTIVE
-    // provider's models via /v1/models with the active credential (read per call, never cached or
-    // returned), mapped to {id, label, maxOutputTokens}; max_tokens falls back to the static seed
-    // when the provider/SDK doesn't surface it. Fails soft inside createModelCatalog — a dead
-    // network or a gateway without /v1/models degrades to the static list (never blocks the picker).
-    // In FAKE_LLM mode the lister rejects so the catalog stays the deterministic static list (no
-    // network in e2e). The model-aware generation cap reads the LIVE ceiling off this cache.
-    // The corporate gateway is queried live too (provider-scoped: the corp creds + baseURL mean
-    // its /v1/models returns ONLY the corp set, never Anthropic's catalog), so a newly-served model
-    // is captured automatically. This curated allowlist (no Opus) is the FALLBACK when the gateway
-    // exposes no /v1/models — so the picker is never blank and never degrades to the static,
-    // Opus-bearing floor.
+    // The dynamic model catalog (ADR-0021; closes F22/TD-012). Direct Anthropic reads /v1/models.
+    // Gateways use their persisted URL-scoped profile so opening a picker never causes network or
+    // billable diagnostic traffic; Settings owns the explicit list refresh and model tests.
     const GATEWAY_MODELS: CatalogModel[] = [
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', maxOutputTokens: 64e3 },
       { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64e3 },
     ];
-    const fetchServedModels = async (): Promise<CatalogModel[]> => {
-      const provider = readProvider();
-      const credential = providerKeyReader.getKeyForMain();
+    const fetchServedModels = async (provider: ProviderConfig): Promise<CatalogModel[]> => {
+      const credential = keyStore.getKeyForMain(provider.provider);
       const opts = providerSdkOptions(provider, credential);
       const client = new Anthropic({
         apiKey: opts.apiKey,
@@ -694,8 +693,10 @@ app
         ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
         // Route the gateway's models query through the SAME Chromium/proxy stack as chat + ping
         // (net.fetch) — a bare Node fetch would bypass the corp proxy and fail. maxRetries 0 keeps a
-        // missing /v1/models from stalling the picker on SDK backoff before the curated fallback.
-        ...(provider.provider === 'gateway' ? { fetch: netFetch, maxRetries: 0 } : {}),
+        // missing /v1/models from stalling an explicit Settings refresh on SDK backoff.
+        ...(provider.provider === 'gateway'
+          ? { fetch: netFetch, maxRetries: 0, timeout: GATEWAY_MODEL_TEST_TIMEOUT_MS }
+          : {}),
       });
       const fetchModels = async (): Promise<CatalogModel[]> => {
         const page = (await client.models.list()) as { data?: unknown[] };
@@ -708,35 +709,22 @@ app
           };
         });
       };
-      // Gateway: query the gateway's OWN /v1/models (provider-scoped — corp creds + baseURL). This is
-      // the FULL advertised set, which a corporate gateway may flood with the whole Bedrock catalog;
-      // the per-user curation (curateGatewayModels, below) is what narrows it for the pickers. Fall
-      // back to the curated allowlist if the gateway exposes no models endpoint, so a 404 never blanks
-      // the picker.
-      if (provider.provider === 'gateway') {
-        try {
-          const models = await fetchModels();
-          if (models.length > 0) {
-            return models;
-          }
-        } catch {
-          // Gateway without /v1/models (or a transient proxy error) — use the curated set.
-        }
-        return GATEWAY_MODELS;
-      }
       return fetchModels();
     };
 
-    // The picker list = the served set, then the gateway CURATION: the user-chosen ids, or the app's
-    // KNOWN TIERS until they curate (so the corporate gateway's full Bedrock advertisement never
-    // floods the dropdowns). Anthropic is unaffected — its /v1/models already IS the real catalog.
-    const listModels = async (): Promise<CatalogModel[]> => {
-      const served = await fetchServedModels();
-      if (readProvider().provider !== 'gateway') {
-        return served;
-      }
-      return curateGatewayModels(served, prefsStore.get().gatewayModels ?? []);
+    // Gateway pickers are local after setup: use the persisted, URL-scoped profile and never probe or
+    // list models just because a picker opened. The explicit Settings refresh updates this profile.
+    const configuredGatewayModels = (
+      provider: Extract<ProviderConfig, { provider: 'gateway' }>,
+    ): CatalogModel[] => {
+      const profile = gatewayModelProfile(prefsStore.get(), provider.baseURL);
+      const knownModels = profile.models.length > 0 ? profile.models : GATEWAY_MODELS;
+      return curateGatewayModels(knownModels, profile.curatedModelIds);
     };
+    const listModels = async (provider: ProviderConfig): Promise<CatalogModel[]> =>
+      provider.provider === 'anthropic'
+        ? fetchServedModels(provider)
+        : configuredGatewayModels(provider);
 
     // Gateway diagnostics (curated picker, Settings). `listGatewayModels` returns the FULL advertised
     // set (uncurated) for the panel to choose from; `diagnoseGatewayModels` pings each chosen id and
@@ -744,10 +732,15 @@ app
     // serves 3.5 Sonnet) before you commit. Both route through net.fetch (the corp proxy path) and
     // read the credential per call; the token never crosses back. Gateway-only.
     registrar.handle(SETTINGS_CHANNELS.listGatewayModels, async () => {
-      if (readProvider().provider !== 'gateway') {
+      const provider = readProvider();
+      if (provider.provider !== 'gateway') {
         return [] as CatalogModel[];
       }
-      return fetchServedModels();
+      const models = await fetchServedModels(provider);
+      if (models.length === 0) {
+        throw new Error('The gateway returned an empty model list.');
+      }
+      return models;
     });
     registrar.handle(SETTINGS_CHANNELS.diagnoseGatewayModels, async (_event, raw) => {
       const ids = Array.isArray(raw)
@@ -759,11 +752,14 @@ app
       }
       const credential = providerKeyReader.getKeyForMain();
       if (!credential) {
+        const testedAt = Date.now();
         return ids.map(
           (id): GatewayModelDiagnosis => ({
             id,
             served: null,
             ok: false,
+            status: 'unavailable',
+            testedAt,
             error: 'No gateway token saved.',
           }),
         );
@@ -774,30 +770,20 @@ app
         ...(opts.authToken != null ? { authToken: opts.authToken } : {}),
         ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
         maxRetries: 0,
+        timeout: GATEWAY_MODEL_TEST_TIMEOUT_MS,
         fetch: netFetch,
       });
-      const diagnoseOne = async (id: string): Promise<GatewayModelDiagnosis> => {
-        try {
-          const response = await probe.messages.create({
+      return diagnoseGatewayModels(ids, async (id, signal) => {
+        const response = await probe.messages.create(
+          {
             model: id,
             max_tokens: 1,
             messages: [{ role: 'user', content: 'ping' }],
-          });
-          return { id, served: response.model, ok: true };
-        } catch (error) {
-          const status = (error as { status?: number } | null)?.status;
-          const message = (error as { message?: string } | null)?.message ?? String(error);
-          return {
-            id,
-            served: null,
-            ok: false,
-            error: status ? `HTTP ${status}: ${message}` : message,
-          };
-        }
-      };
-      // A small upper bound so a huge advertised catalog can't fan out into a token/network storm;
-      // the panel only ever tests the handful the user ticked.
-      return Promise.all(ids.slice(0, 25).map(diagnoseOne));
+          },
+          { signal },
+        );
+        return response.model;
+      });
     });
     // Main-process-only Anthropic path (M03.B; M03.C grounds it in the session's
     // notes via noteStore). The service reads the key via keyStore.getKeyForMain()
@@ -816,9 +802,20 @@ app
     // stays the deterministic static list (no network in the e2e). Warmed once at startup (non-
     // blocking) in production so the model-aware generation cap reads live ceilings.
     const modelCatalog = createModelCatalog({
-      listModels: fakeLlm
-        ? () => Promise.reject(new Error('fake-llm: static catalog'))
-        : listModels,
+      getContext: () => {
+        const provider = readProvider();
+        return {
+          key:
+            provider.provider === 'gateway'
+              ? `gateway:${normalizeGatewayProfileKey(provider.baseURL)}`
+              : 'anthropic',
+          fallback:
+            provider.provider === 'gateway' ? configuredGatewayModels(provider) : STATIC_CATALOG,
+          listModels: fakeLlm
+            ? () => Promise.reject(new Error('fake-llm: static catalog'))
+            : () => listModels(provider),
+        };
+      },
     });
     if (!fakeLlm) {
       void modelCatalog.list();

@@ -152,9 +152,21 @@ describe('settings IPC handlers', () => {
     expect(() => call(SETTINGS_CHANNELS.setKey, 123)).toThrow(TypeError);
     expect(() => call(SETTINGS_CHANNELS.setPrefs, 'not-an-object')).toThrow(TypeError);
     expect(() => call(SETTINGS_CHANNELS.setPrefs, { chatModel: 42 })).toThrow(TypeError);
+    expect(() => call(SETTINGS_CHANNELS.setPrefs, { selectedModel: 42 })).toThrow(TypeError);
     // gatewayModels (the curated picker allowlist) must be a string[].
     expect(() => call(SETTINGS_CHANNELS.setPrefs, { gatewayModels: 'nope' })).toThrow(TypeError);
     expect(() => call(SETTINGS_CHANNELS.setPrefs, { gatewayModels: [1, 2] })).toThrow(TypeError);
+    expect(() =>
+      call(SETTINGS_CHANNELS.setPrefs, {
+        gatewayModelProfiles: {
+          'https://corp.example': {
+            models: [],
+            curatedModelIds: ['corp-model'],
+            verifications: { 'corp-model': { id: 'corp-model', ok: true } },
+          },
+        },
+      }),
+    ).toThrow(TypeError);
   });
 
   it('round-trips the curated gateway model allowlist (string[])', () => {
@@ -164,5 +176,27 @@ describe('settings IPC handlers', () => {
       gatewayModels: ids,
     });
     expect(call(SETTINGS_CHANNELS.getPrefs)).toEqual({ gatewayModels: ids });
+  });
+
+  it('round-trips a URL-scoped gateway model profile', () => {
+    setup();
+    const gatewayModelProfiles = {
+      'https://corp.example': {
+        models: [{ id: 'corp-model', label: 'Corp Model', maxOutputTokens: 32000 }],
+        curatedModelIds: ['corp-model'],
+        verifications: {
+          'corp-model': {
+            id: 'corp-model',
+            served: 'corp-model',
+            ok: true,
+            status: 'available' as const,
+            testedAt: 1234,
+          },
+        },
+      },
+    };
+    expect(call(SETTINGS_CHANNELS.setPrefs, { gatewayModelProfiles })).toEqual({
+      gatewayModelProfiles,
+    });
   });
 });

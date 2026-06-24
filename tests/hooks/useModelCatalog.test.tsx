@@ -19,15 +19,17 @@ const LIVE: CatalogModel[] = [{ id: 'live-1', label: 'Live One', maxOutputTokens
 const REFRESHED: CatalogModel[] = [{ id: 'live-2', label: 'Live Two', maxOutputTokens: 32000 }];
 
 function Harness({ client }: { client: CatalogClient }): ReactElement {
-  const { models, refresh } = useModelCatalog(client);
+  const { models, status, error, refresh } = useModelCatalog(client);
   return (
     <div>
+      <span data-testid="catalog-status">{status}</span>
+      {error && <span>{error}</span>}
       <ul aria-label="models">
         {models.map((m) => (
           <li key={m.id}>{m.label}</li>
         ))}
       </ul>
-      <button type="button" onClick={refresh}>
+      <button type="button" onClick={() => void refresh()}>
         refresh
       </button>
     </div>
@@ -44,10 +46,28 @@ describe('useModelCatalog', () => {
 
     // Static seed is present immediately (never empty), then the live list lands.
     expect(await screen.findByText('Live One')).toBeInTheDocument();
+    expect(screen.getByTestId('catalog-status')).toHaveTextContent('ready');
 
     await userEvent.click(screen.getByRole('button', { name: 'refresh' }));
     expect(await screen.findByText('Live Two')).toBeInTheDocument();
     expect(client.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an explicit refresh failure and keeps the existing models', async () => {
+    const client: CatalogClient = {
+      list: vi.fn(async () => LIVE),
+      refresh: vi.fn(async () => {
+        throw new Error('offline');
+      }),
+    };
+    render(<Harness client={client} />);
+    expect(await screen.findByText('Live One')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'refresh' }));
+
+    expect(await screen.findByText(/couldn't refresh/i)).toBeInTheDocument();
+    expect(screen.getByTestId('catalog-status')).toHaveTextContent('error');
+    expect(screen.getByText('Live One')).toBeInTheDocument();
   });
 
   it('re-pulls via list() when the catalog-changed signal fires (e.g. curation saved)', async () => {

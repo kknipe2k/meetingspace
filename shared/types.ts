@@ -94,7 +94,24 @@ export interface GatewayModelDiagnosis {
   readonly id: string;
   readonly served: string | null;
   readonly ok: boolean;
+  readonly status: 'available' | 'substituted' | 'unavailable' | 'timeout';
+  readonly testedAt: number;
   readonly error?: string;
+}
+
+// Persisted, non-secret result of an explicit gateway model test. A credential replacement marks
+// existing records stale rather than deleting them, so the user can see what worked previously and
+// choose when to retest.
+export interface GatewayModelVerification extends GatewayModelDiagnosis {
+  readonly stale?: boolean;
+}
+
+// Gateway model setup is scoped to the normalized base URL. This prevents one company's curation
+// and test results from leaking into another gateway configuration on the same machine.
+export interface GatewayModelProfile {
+  readonly models: readonly CatalogModel[];
+  readonly curatedModelIds: readonly string[];
+  readonly verifications: Readonly<Record<string, GatewayModelVerification>>;
 }
 
 // The LLM backend the app talks to (M07.D; REVIEW-V11 F19). `anthropic` is the direct
@@ -147,6 +164,9 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 // `windowState`/`zoomFactor`/`themePreference` are the M06.A desktop-convention state (window
 // geometry, the persisted View-menu zoom, the appearance choice), all non-secret.
 export interface Prefs {
+  // Canonical model selection shared by chat and document generation. The two legacy fields below
+  // remain readable for migration from older builds, but new writes use selectedModel.
+  readonly selectedModel?: string;
   readonly chatModel?: string;
   readonly generationModel?: string;
   readonly provider?: ProviderConfig;
@@ -167,6 +187,9 @@ export interface Prefs {
   // curated yet ⇒ the dropdowns fall back to the app's known tiers (de-flooded). Gateway-only;
   // non-secret like the rest.
   readonly gatewayModels?: readonly string[];
+  // Persisted model setup per normalized gateway base URL. Listing and testing are user-triggered;
+  // opening Settings reads this cache and performs no model network requests.
+  readonly gatewayModelProfiles?: Readonly<Record<string, GatewayModelProfile>>;
 }
 
 // A native-menu command the main process forwards to the renderer over app:command (M06.A).

@@ -79,13 +79,12 @@ const REGISTRY: readonly string[] = [
   'components/SettingsModal.tsx client.setProvider', // P (handleSave gateway → providerError)
   'components/SettingsModal.tsx client.setKey', // S
   'components/SettingsModal.tsx client.clearKey', // S
-  'components/SettingsModal.tsx client.setPrefs', // S — gateway curated model allowlist (surface())
+  'components/SettingsModal.tsx client.setPrefs', // S - persisted gateway profile (surface())
   // SettingsModal — full backup/restore (M06.C, surfaced via surface())
   'components/SettingsModal.tsx storage.backup', // S (M06.C)
   'components/SettingsModal.tsx storage.restore', // S (M06.C)
   // Preference writes (F18 "by design" → surfaced this stage to keep the exemption set minimal)
-  'components/LLMPanel.tsx settings.setPrefs', // S — chat model
-  'components/LLMPanel.tsx settings.setPrefs', // S — generation model
+  'components/LLMPanel.tsx settings.setPrefs', // S - shared chat + generation model
   'components/LLMPanel.tsx settings.setPrefs', // S — F8 chat scroll offset (M06.D); debounced, surfaced
   'hooks/useTheme.ts settings.setPrefs', // S
 ];

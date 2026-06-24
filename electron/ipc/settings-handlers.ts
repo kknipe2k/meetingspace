@@ -43,7 +43,7 @@ function asPrefs(value: unknown): Prefs {
     throw new TypeError('settings ipc: prefs must be an object');
   }
   const record = value as Record<string, unknown>;
-  for (const field of ['chatModel', 'generationModel'] as const) {
+  for (const field of ['selectedModel', 'chatModel', 'generationModel'] as const) {
     if (record[field] !== undefined && typeof record[field] !== 'string') {
       throw new TypeError(`settings ipc: ${field} must be a string`);
     }
@@ -54,6 +54,67 @@ function asPrefs(value: unknown): Prefs {
       record.gatewayModels.some((id) => typeof id !== 'string')
     ) {
       throw new TypeError('settings ipc: gatewayModels must be a string[]');
+    }
+  }
+  if (record.gatewayModelProfiles !== undefined) {
+    if (
+      typeof record.gatewayModelProfiles !== 'object' ||
+      record.gatewayModelProfiles === null ||
+      Array.isArray(record.gatewayModelProfiles)
+    ) {
+      throw new TypeError('settings ipc: gatewayModelProfiles must be an object');
+    }
+    for (const profile of Object.values(record.gatewayModelProfiles)) {
+      if (typeof profile !== 'object' || profile === null || Array.isArray(profile)) {
+        throw new TypeError('settings ipc: gateway model profile must be an object');
+      }
+      const candidate = profile as Record<string, unknown>;
+      if (
+        !Array.isArray(candidate.models) ||
+        !Array.isArray(candidate.curatedModelIds) ||
+        candidate.curatedModelIds.some((id) => typeof id !== 'string') ||
+        typeof candidate.verifications !== 'object' ||
+        candidate.verifications === null ||
+        Array.isArray(candidate.verifications)
+      ) {
+        throw new TypeError('settings ipc: invalid gateway model profile');
+      }
+      for (const model of candidate.models) {
+        if (
+          typeof model !== 'object' ||
+          model === null ||
+          Array.isArray(model) ||
+          typeof (model as Record<string, unknown>).id !== 'string' ||
+          typeof (model as Record<string, unknown>).label !== 'string' ||
+          typeof (model as Record<string, unknown>).maxOutputTokens !== 'number'
+        ) {
+          throw new TypeError('settings ipc: invalid gateway model metadata');
+        }
+      }
+      for (const verification of Object.values(candidate.verifications)) {
+        if (
+          typeof verification !== 'object' ||
+          verification === null ||
+          Array.isArray(verification)
+        ) {
+          throw new TypeError('settings ipc: invalid gateway model verification');
+        }
+        const result = verification as Record<string, unknown>;
+        if (
+          typeof result.id !== 'string' ||
+          typeof result.ok !== 'boolean' ||
+          typeof result.testedAt !== 'number' ||
+          (result.served !== null && typeof result.served !== 'string') ||
+          (result.error !== undefined && typeof result.error !== 'string') ||
+          (result.stale !== undefined && typeof result.stale !== 'boolean') ||
+          (result.status !== 'available' &&
+            result.status !== 'substituted' &&
+            result.status !== 'unavailable' &&
+            result.status !== 'timeout')
+        ) {
+          throw new TypeError('settings ipc: invalid gateway model verification');
+        }
+      }
     }
   }
   if (
