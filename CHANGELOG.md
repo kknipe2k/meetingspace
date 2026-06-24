@@ -2,6 +2,13 @@
 
 Notable changes, newest first.
 
+## 1.3.0 — 2026-06-24
+
+- **Truthful gateway model tests:** the Settings ▸ Gateway models diagnostic now probes each model the same way chat does (a real streaming request), so it detects when a corporate governance layer silently **substitutes** a model — e.g. you select Opus but the gateway serves Sonnet. The previous lightweight non-streaming "ping" slipped past that redirect and wrongly reported substituted models as available.
+- **Substituted models are hidden from the pickers:** once a test proves the gateway serves a different model than you asked for, that model no longer appears in the chat or white-paper dropdowns, so you can't accidentally pick a model the gateway won't actually use. Models that pass — and untested or temporarily-unreachable ones — stay visible.
+- **Test all + clearer results:** a new **Test all** button checks every advertised model in one pass; verified-available models show a green card, while substituted or unavailable ones show red and name what the gateway actually served. A first-run nudge reminds you to test a freshly loaded model list.
+- **Wider model lists:** the diagnostic now covers up to 200 advertised models (was 25), for gateways that expose the full Bedrock catalog.
+
 ## 1.2.2 — 2026-06-23
 
 - **Gateway security:** gateway base URLs now require HTTPS by default. Plain HTTP is accepted only for localhost, or via an explicit advanced override (`MEETINGSPACE_ALLOW_INSECURE_GATEWAY_HTTP=1`) for an internal corporate HTTP gateway behind a trusted network — so the bearer token is never sent over cleartext by default.

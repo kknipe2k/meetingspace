@@ -30,8 +30,9 @@ You'll need your own Anthropic API key for the Claude features (chat / white pap
 
 ## ✨ What's new in __VERSION__
 
-- **Gateway security hardening:** gateway base URLs now require **HTTPS** by default — plain HTTP is accepted only for localhost, or via an explicit advanced override for an internal corporate HTTP gateway behind a trusted network. This keeps your gateway token off cleartext connections by default.
-- **Supply chain:** the CI/release GitHub Actions are pinned to commit SHAs, with automated update tracking.
-- Includes everything from 1.2.1: corporate AWS Bedrock **gateway** support (via your company proxy), **Test connection**, and the gateway **model list**.
+- **Truthful gateway model tests:** the Settings ▸ Gateway models diagnostic now tests each model the same way chat does (a real streaming request), so it catches when a corporate gateway silently **substitutes** a model — e.g. you pick Opus but it serves Sonnet. The old lightweight "ping" slipped past that redirect and wrongly showed substituted models as available.
+- **Substituted models drop out of the pickers:** a model the gateway proves it swaps no longer appears in the chat or white-paper dropdowns, so you can't pick a model the gateway won't actually use. Models that pass stay selectable.
+- **Test all + clearer results:** a new **Test all** button checks every advertised model at once; available models show green, substituted or unavailable ones show red and name what was actually served. The diagnostic now covers up to 200 models (was 25).
+- Includes everything from 1.2.x: corporate AWS Bedrock **gateway** support (via your company proxy), HTTPS-by-default, **Test connection**, and the gateway **model list**.
 
 Full details in CHANGELOG.md.
