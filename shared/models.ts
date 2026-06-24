@@ -7,7 +7,7 @@
  * re-verify against Anthropic's pricing page whenever this is touched. Prompt
  * caching reuses the session/grounding prefix at ~10% of the input price.
  */
-import type { CatalogModel, GatewayModelProfile, Prefs } from './types';
+import type { CatalogModel, GatewayModelProfile, GatewayModelVerification, Prefs } from './types';
 
 export interface ChatModelOption {
   readonly id: string;
@@ -172,5 +172,19 @@ export function curateGatewayModels(
         maxOutputTokens: maxOutputTokensFor(id) ?? GATEWAY_FALLBACK_MAX_OUTPUT_TOKENS,
       }
     );
+  });
+}
+
+// Drop any model the diagnostics proved the gateway SUBSTITUTES (you ask for it, the governance layer
+// silently serves a different model). Such a model must never reach the chat/generation dropdowns —
+// selecting it is a lie. Only 'substituted' is hidden: 'unavailable'/'timeout' stay visible (a probe
+// failure is not proof the model is wrong), and an unverified id (no entry) stays visible too.
+export function accessibleGatewayModels(
+  models: readonly CatalogModel[],
+  verifications: Readonly<Record<string, GatewayModelVerification>>,
+): CatalogModel[] {
+  return models.filter((model) => {
+    const verification = verifications[model.id];
+    return !verification || verification.status !== 'substituted';
   });
 }

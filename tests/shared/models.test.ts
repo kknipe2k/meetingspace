@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  accessibleGatewayModels,
   CHAT_MODELS,
   curateGatewayModels,
   DEFAULT_CHAT_MODEL,
@@ -10,7 +11,7 @@ import {
   normalizeGatewayProfileKey,
   prefsWithGatewayModelProfile,
 } from '@shared/models';
-import type { CatalogModel, GatewayModelProfile } from '@shared/types';
+import type { CatalogModel, GatewayModelProfile, GatewayModelVerification } from '@shared/types';
 
 /*
  * The model catalog (M03.D; M04.C flips the generation default Opus -> Sonnet 4.6
@@ -84,6 +85,52 @@ describe('curateGatewayModels', () => {
     expect(curateGatewayModels(served, ['ghost-model-x'])).toEqual([
       { id: 'ghost-model-x', label: modelLabel('ghost-model-x'), maxOutputTokens: 64000 },
     ]);
+  });
+});
+
+/*
+ * The picker accessibility filter (gateway streaming-probe diagnostics). A model the gateway proved
+ * it SUBSTITUTES (you ask for it, governance silently serves a different model) must never reach the
+ * chat / white-paper dropdowns — selecting it would be a lie. Only 'substituted' is hidden: a probe
+ * failure ('unavailable'/'timeout') is not proof the model is wrong, and an untested id stays visible.
+ */
+describe('accessibleGatewayModels', () => {
+  const models: CatalogModel[] = [
+    { id: 'available-model', label: 'Available', maxOutputTokens: 64000 },
+    { id: 'substituted-model', label: 'Substituted', maxOutputTokens: 64000 },
+    { id: 'unavailable-model', label: 'Unavailable', maxOutputTokens: 64000 },
+    { id: 'timeout-model', label: 'Timeout', maxOutputTokens: 64000 },
+    { id: 'untested-model', label: 'Untested', maxOutputTokens: 64000 },
+  ];
+  const verify = (
+    id: string,
+    status: GatewayModelVerification['status'],
+  ): GatewayModelVerification => ({
+    id,
+    served: status === 'substituted' ? 'other-model' : id,
+    ok: status === 'available' || status === 'substituted',
+    status,
+    testedAt: 1,
+  });
+  const verifications: Record<string, GatewayModelVerification> = {
+    'available-model': verify('available-model', 'available'),
+    'substituted-model': verify('substituted-model', 'substituted'),
+    'unavailable-model': verify('unavailable-model', 'unavailable'),
+    'timeout-model': verify('timeout-model', 'timeout'),
+    // 'untested-model' deliberately has no verification entry.
+  };
+
+  it('hides ONLY substituted models; keeps available, unavailable, timeout, and untested', () => {
+    expect(accessibleGatewayModels(models, verifications).map((model) => model.id)).toEqual([
+      'available-model',
+      'unavailable-model',
+      'timeout-model',
+      'untested-model',
+    ]);
+  });
+
+  it('keeps every model when nothing has been verified', () => {
+    expect(accessibleGatewayModels(models, {})).toEqual(models);
   });
 });
 

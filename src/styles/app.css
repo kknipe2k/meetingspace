@@ -683,6 +683,19 @@ body {
   line-height: var(--leading-body);
 }
 
+/* The verified-available card — the green twin of .settings-error, for a gateway model the
+   diagnostics confirmed the gateway truly serves (not substituted). */
+.settings-success {
+  margin: 0;
+  padding: calc(var(--space-3) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  color: var(--color-success);
+  font-size: calc(var(--text-sm) * 1rem);
+  line-height: var(--leading-body);
+}
+
 .settings-key-status {
   margin: 0;
   color: var(--color-text-muted);

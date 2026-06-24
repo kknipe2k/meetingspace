@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { diagnoseGatewayModels } from '../../electron/llm/gateway-diagnostics';
+import {
+  diagnoseGatewayModels,
+  GATEWAY_MODEL_TEST_LIMIT,
+} from '../../electron/llm/gateway-diagnostics';
 
 describe('gateway model diagnostics', () => {
   it('records available, substituted, and unavailable models independently', async () => {
@@ -59,6 +62,23 @@ describe('gateway model diagnostics', () => {
       testedAt: 5678,
       error: 'Timed out after 1 seconds.',
     });
+  });
+
+  it('caps the number of probed ids at GATEWAY_MODEL_TEST_LIMIT (raised to 200 for full Bedrock lists)', async () => {
+    expect(GATEWAY_MODEL_TEST_LIMIT).toBe(200);
+    const ids = Array.from({ length: GATEWAY_MODEL_TEST_LIMIT + 25 }, (_, i) => `model-${i}`);
+    let probed = 0;
+    const results = await diagnoseGatewayModels(
+      ids,
+      async (id) => {
+        probed += 1;
+        return id;
+      },
+      { now: () => 1 },
+    );
+
+    expect(results).toHaveLength(GATEWAY_MODEL_TEST_LIMIT);
+    expect(probed).toBe(GATEWAY_MODEL_TEST_LIMIT);
   });
 
   it('bounds concurrent probes and preserves input order', async () => {

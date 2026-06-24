@@ -12,6 +12,8 @@ import type {
 } from '@shared/types';
 
 import { SettingsModal } from '../../src/components/SettingsModal';
+import { ToastHost } from '../../src/components/ToastHost';
+import { ToastProvider } from '../../src/hooks/useToasts';
 
 // A controllable fake of the settings IPC client (never the real key/SDK). hasKey
 // and encryptionAvailable drive the surface; setKey/clearKey mutate the reported
@@ -362,5 +364,110 @@ describe('SettingsModal', () => {
     expect(await screen.findByTestId('settings-gateway-model-served')).toHaveTextContent(
       /needs retest/i,
     );
+  });
+
+  it('Test all diagnoses every advertised model, not only the ticked ones', async () => {
+    const user = userEvent.setup();
+    const served: CatalogModel[] = [
+      { id: 'anthropic.claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', maxOutputTokens: 8192 },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64000 },
+    ];
+    const client = gatewayClient(served);
+    render(<SettingsModal client={client} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: /refresh model list/i }));
+    // Nothing ticked — Test all still covers the whole advertised list.
+    await user.click(screen.getByRole('button', { name: /test all/i }));
+
+    expect(client.diagnoseGatewayModels).toHaveBeenCalledWith([
+      'anthropic.claude-3-5-sonnet',
+      'claude-sonnet-4-6',
+    ]);
+  });
+
+  it('flags an available model green and a substituted model red, naming the substitution', async () => {
+    const user = userEvent.setup();
+    const served: CatalogModel[] = [
+      { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', maxOutputTokens: 128000 },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', maxOutputTokens: 64000 },
+    ];
+    // The gateway substitutes Opus → Sonnet (the bug this whole change exists to expose), and serves
+    // Sonnet as itself.
+    const diagnosis: GatewayModelDiagnosis[] = [
+      {
+        id: 'claude-opus-4-8',
+        served: 'claude-sonnet-4-6',
+        ok: true,
+        status: 'substituted',
+        testedAt: 1_750_000_000_000,
+      },
+      {
+        id: 'claude-sonnet-4-6',
+        served: 'claude-sonnet-4-6',
+        ok: true,
+        status: 'available',
+        testedAt: 1_750_000_000_000,
+      },
+    ];
+    const client = gatewayClient(served, diagnosis);
+    render(<SettingsModal client={client} onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: /refresh model list/i }));
+    await user.click(screen.getByRole('button', { name: /test all/i }));
+
+    const cards = await screen.findAllByTestId('settings-gateway-model-served');
+    // Advertised order: Opus (substituted → red) then Sonnet (available → green).
+    expect(cards[0]).toHaveClass('settings-error');
+    expect(cards[0]).toHaveTextContent(/substituted/i);
+    expect(cards[0]).toHaveTextContent(/claude-sonnet-4-6/);
+    expect(cards[1]).toHaveClass('settings-success');
+    expect(cards[1]).toHaveTextContent(/available/i);
+  });
+
+  it('nudges the user to test models (once) when a saved list has never been tested', async () => {
+    const model: CatalogModel = { id: 'corp-model', label: 'Corp Model', maxOutputTokens: 32000 };
+    const client = gatewayClient([], [], {
+      gatewayModelProfiles: {
+        'https://corp.example': { models: [model], curatedModelIds: [], verifications: {} },
+      },
+    });
+    render(
+      <ToastProvider>
+        <SettingsModal client={client} onClose={vi.fn()} />
+        <ToastHost />
+      </ToastProvider>,
+    );
+
+    expect(await screen.findByText(/test your gateway models/i)).toBeInTheDocument();
+  });
+
+  it('does NOT nudge when the saved list already has test results', async () => {
+    const model: CatalogModel = { id: 'corp-model', label: 'Corp Model', maxOutputTokens: 32000 };
+    const client = gatewayClient([], [], {
+      gatewayModelProfiles: {
+        'https://corp.example': {
+          models: [model],
+          curatedModelIds: [model.id],
+          verifications: {
+            [model.id]: {
+              id: model.id,
+              served: model.id,
+              ok: true,
+              status: 'available',
+              testedAt: 1_750_000_000_000,
+            },
+          },
+        },
+      },
+    });
+    render(
+      <ToastProvider>
+        <SettingsModal client={client} onClose={vi.fn()} />
+        <ToastHost />
+      </ToastProvider>,
+    );
+
+    await screen.findByText('corp-model');
+    expect(screen.queryByText(/test your gateway models/i)).toBeNull();
   });
 });

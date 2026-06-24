@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
 import type {
@@ -63,7 +63,7 @@ function verificationLabel(result: GatewayModelVerification): string {
     return `Available - verified ${date}`;
   }
   if (result.status === 'substituted') {
-    return `Available as ${result.served ?? 'another model'} - verified ${date}`;
+    return `Substituted - the gateway serves ${result.served ?? 'another model'} instead - tested ${date}`;
   }
   if (result.status === 'timeout') {
     return `Timed out - tested ${date}`;
@@ -114,6 +114,9 @@ export function SettingsModal({
   const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
   const { surface } = useMutationToast();
   const { show } = useToasts();
+  // Fire the "now test your models" nudge once per open, when a saved gateway list has never been
+  // tested — an untested list can advertise models the gateway silently substitutes.
+  const firstRunNudgeShown = useRef(false);
 
   const applyGatewayProfile = useCallback((baseURL: string, prefs: Prefs): void => {
     const profile = gatewayModelProfile(prefs, baseURL);
@@ -175,6 +178,23 @@ export function SettingsModal({
       active = false;
     };
   }, [applyGatewayProfile, client]);
+
+  // First-run nudge: a saved model list with zero recorded tests means the user hasn't yet checked
+  // what the gateway actually serves. Prompt them to test (once), so a silently-substituted model
+  // can't slip into the pickers untested.
+  useEffect(() => {
+    if (
+      !firstRunNudgeShown.current &&
+      gatewayModels.length > 0 &&
+      Object.keys(modelDiagnosis).length === 0
+    ) {
+      firstRunNudgeShown.current = true;
+      show({
+        variant: 'info',
+        message: 'Test your gateway models so the pickers only show what the gateway truly serves.',
+      });
+    }
+  }, [gatewayModels, modelDiagnosis, show]);
 
   // Before the first status load, assume encryption is available (so we don't flash an
   // error) and no key (so we don't claim one exists).
@@ -366,49 +386,66 @@ export function SettingsModal({
     surface,
   ]);
 
-  // Test the TICKED models: ping each and record the model the gateway actually serves (per row), so
-  // a substitution (ask for Sonnet 4.x, get 3.5 Sonnet) is visible before the user commits.
-  const handleTestModels = useCallback(async (): Promise<void> => {
-    if (selectedModelIds.length === 0) {
-      return;
-    }
-    setTestingModels(true);
-    setModelSelectionError(null);
-    try {
-      const results = (await client.diagnoseGatewayModels?.(selectedModelIds)) ?? [];
-      const nextResults: Record<string, GatewayModelVerification> = { ...modelDiagnosis };
-      for (const result of results) {
-        nextResults[result.id] = { ...result, stale: false };
+  // Test a set of model ids: ping each (a streaming request shaped like real chat, so the gateway's
+  // governance redirect fires) and record the model it ACTUALLY serves per row — so a substitution
+  // (ask for Opus, get Sonnet) is visible before the user commits. The working selection is preserved
+  // across the persist/reload. Shared by "Test selected" (the ticked ids) and "Test all" (every id).
+  const runDiagnose = useCallback(
+    async (ids: readonly string[]): Promise<void> => {
+      if (ids.length === 0) {
+        return;
       }
-      const profile: GatewayModelProfile = {
-        models: gatewayModels,
-        curatedModelIds: savedModelIds,
-        verifications: nextResults,
-      };
-      const persisted = await surface(
-        () => persistGatewayProfile(savedGatewayUrl, profile),
-        "Couldn't save the model test results.",
-      );
-      if (persisted !== undefined) {
-        applyGatewayProfile(savedGatewayUrl, persisted);
-        setSelectedModelIds([...selectedModelIds]);
+      setTestingModels(true);
+      setModelSelectionError(null);
+      try {
+        const results = (await client.diagnoseGatewayModels?.(ids)) ?? [];
+        const nextResults: Record<string, GatewayModelVerification> = { ...modelDiagnosis };
+        for (const result of results) {
+          nextResults[result.id] = { ...result, stale: false };
+        }
+        const profile: GatewayModelProfile = {
+          models: gatewayModels,
+          curatedModelIds: savedModelIds,
+          verifications: nextResults,
+        };
+        const persisted = await surface(
+          () => persistGatewayProfile(savedGatewayUrl, profile),
+          "Couldn't save the model test results.",
+        );
+        if (persisted !== undefined) {
+          applyGatewayProfile(savedGatewayUrl, persisted);
+          setSelectedModelIds([...selectedModelIds]);
+        }
+      } catch {
+        setModelSelectionError("Couldn't test the models. Please try again.");
+      } finally {
+        setTestingModels(false);
       }
-    } catch {
-      setModelSelectionError("Couldn't test the selected models. Please try again.");
-    } finally {
-      setTestingModels(false);
-    }
-  }, [
-    applyGatewayProfile,
-    client,
-    gatewayModels,
-    modelDiagnosis,
-    persistGatewayProfile,
-    savedGatewayUrl,
-    savedModelIds,
-    selectedModelIds,
-    surface,
-  ]);
+    },
+    [
+      applyGatewayProfile,
+      client,
+      gatewayModels,
+      modelDiagnosis,
+      persistGatewayProfile,
+      savedGatewayUrl,
+      savedModelIds,
+      selectedModelIds,
+      surface,
+    ],
+  );
+
+  const handleTestModels = useCallback(
+    (): Promise<void> => runDiagnose(selectedModelIds),
+    [runDiagnose, selectedModelIds],
+  );
+
+  // Test every advertised model in one pass — the fastest way to discover which ids the gateway
+  // silently substitutes without ticking each one first.
+  const handleTestAllModels = useCallback(
+    (): Promise<void> => runDiagnose(gatewayModels.map((model) => model.id)),
+    [gatewayModels, runDiagnose],
+  );
 
   // Persist the verified allowlist, then refresh the provider-scoped catalog so both pickers update.
   const handleSaveModels = useCallback(async (): Promise<void> => {
@@ -698,7 +735,9 @@ export function SettingsModal({
                     {result && (
                       <span
                         className={
-                          result.ok && !result.stale ? 'settings-model-status' : 'settings-error'
+                          result.status === 'available' && !result.stale
+                            ? 'settings-success'
+                            : 'settings-error'
                         }
                         data-testid="settings-gateway-model-served"
                       >
@@ -725,6 +764,14 @@ export function SettingsModal({
               disabled={testingModels || selectedModelIds.length === 0}
             >
               {testingModels ? 'Testing…' : 'Test selected'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleTestAllModels()}
+              disabled={testingModels || gatewayModels.length === 0}
+            >
+              {testingModels ? 'Testing…' : 'Test all'}
             </button>
             <button
               type="button"

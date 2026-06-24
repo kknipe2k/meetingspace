@@ -61,6 +61,7 @@ import { registerSettingsHandlers } from './ipc/settings-handlers';
 import Anthropic from '@anthropic-ai/sdk';
 import type { CatalogModel, GatewayModelDiagnosis, ProviderConfig } from '@shared/types';
 import {
+  accessibleGatewayModels,
   curateGatewayModels,
   gatewayModelProfile,
   maxOutputTokensFor,
@@ -719,7 +720,12 @@ app
     ): CatalogModel[] => {
       const profile = gatewayModelProfile(prefsStore.get(), provider.baseURL);
       const knownModels = profile.models.length > 0 ? profile.models : GATEWAY_MODELS;
-      return curateGatewayModels(knownModels, profile.curatedModelIds);
+      // Hide any id the diagnostics proved is substituted before curation, so a model the gateway
+      // silently swaps never reaches the chat/generation dropdowns.
+      return curateGatewayModels(
+        accessibleGatewayModels(knownModels, profile.verifications),
+        profile.curatedModelIds,
+      );
     };
     const listModels = async (provider: ProviderConfig): Promise<CatalogModel[]> =>
       provider.provider === 'anthropic'
@@ -773,16 +779,21 @@ app
         timeout: GATEWAY_MODEL_TEST_TIMEOUT_MS,
         fetch: netFetch,
       });
+      // Probe with a STREAMING request carrying real content — the same shape chat uses — because a
+      // corporate governance layer only redirects streaming requests with content. A non-streaming
+      // max_tokens:1 "ping" slips past that redirect and falsely reports a substituted model (e.g.
+      // Opus → Sonnet) as available. finalMessage().model is the id the gateway ACTUALLY served.
       return diagnoseGatewayModels(ids, async (id, signal) => {
-        const response = await probe.messages.create(
+        const stream = probe.messages.stream(
           {
             model: id,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 16,
+            messages: [{ role: 'user', content: 'hi' }],
           },
           { signal },
         );
-        return response.model;
+        const final = await stream.finalMessage();
+        return final.model;
       });
     });
     // Main-process-only Anthropic path (M03.B; M03.C grounds it in the session's

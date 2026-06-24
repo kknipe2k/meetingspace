@@ -2,7 +2,7 @@ import type { GatewayModelDiagnosis } from '@shared/types';
 
 export const GATEWAY_MODEL_TEST_TIMEOUT_MS = 15_000;
 export const GATEWAY_MODEL_TEST_CONCURRENCY = 3;
-export const GATEWAY_MODEL_TEST_LIMIT = 25;
+export const GATEWAY_MODEL_TEST_LIMIT = 200;
 
 export type GatewayModelProbe = (id: string, signal: AbortSignal) => Promise<string>;
 
