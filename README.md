@@ -31,7 +31,7 @@ Create a **named space** for a meeting, then drop things in as it happens:
 Everything is saved to that space and stays fully searchable later. When you're ready, the built-in **Claude** layer turns a captured session into, on demand:
 
 - a detailed **white paper**,
-- structured **meeting minutes** (with your screenshots inline), or
+- structured **meeting minutes** (Claude reads your screenshots, too), or
 - just your **raw notes**, organized and searchable.
 
 There's also an in-app **chat** with Claude that's grounded in the current space's content — ask questions about what you captured without leaving the app. Generated documents can be **exported** to a self-contained HTML file (images embedded, opens in any browser, makes no network calls) or to **PDF**.
@@ -46,7 +46,7 @@ There's also an in-app **chat** with Claude that's grounded in the current space
 
 ## Example output
 
-Generated documents are fully formatted — headings, styled tables, callout illustrations, your screenshots inline — and export to a self-contained HTML file or PDF:
+Generated documents are fully formatted — headings, styled tables, callout illustrations — and export to a self-contained HTML file or PDF with your screenshots included:
 
 | | |
 |---|---|
