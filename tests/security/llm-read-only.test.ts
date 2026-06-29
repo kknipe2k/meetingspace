@@ -86,8 +86,10 @@ function recordingClientFactory(bodies: string[]) {
       if (init?.body) {
         bodies.push(init.body);
         const parsed = JSON.parse(init.body) as { system?: Array<{ text?: string }> };
+        // M08.A: the part now rides inside the composed system (mandate first, part
+        // last), so match by `includes` rather than `startsWith`.
         const system = parsed.system?.[0]?.text ?? '';
-        if (system.startsWith(PLAN_PROMPT)) {
+        if (system.includes(PLAN_PROMPT)) {
           delta = JSON.stringify({
             sections: [{ title: 'Core', brief: 'The core themes.' }],
             narrative: 'One arc.',
@@ -95,7 +97,7 @@ function recordingClientFactory(bodies: string[]) {
             palette: 'light',
             typography: 'serif',
           });
-        } else if (system.startsWith(CSS_PROMPT)) {
+        } else if (system.includes(CSS_PROMPT)) {
           // The css part is VALIDATED (M07.C) — a rule-less response fails the run
           // before it would emit the bodies this suite inspects.
           delta = ':root { --t: 1; }';

@@ -44,9 +44,6 @@ export interface ModeDoc {
 
 export interface UseGenerationOptions {
   client?: GenClient;
-  /** Called when a generation RUN completes (a real SDK run — whitepaper/minutes/reattach), so the
-   *  app-wide usage counter can refresh to include the generation spend (ADR-0022). */
-  onComplete?(): void;
 }
 
 export interface GenerateParams {
@@ -97,11 +94,6 @@ export function useGeneration(
   options: UseGenerationOptions = {},
 ): UseGeneration {
   const { client = genClient } = options;
-
-  // Latest onComplete on a ref so it never churns the stream-callback identity (the graduated
-  // context-value dep-loop gotcha). Fired when a real run settles successfully (below).
-  const onCompleteRef = useRef(options.onComplete);
-  onCompleteRef.current = options.onComplete;
 
   const [docs, setDocs] = useState<Record<GenMode, ModeDoc>>(EMPTY_DOCS);
   // Latest docs on a ref so cancel can restore the pre-run slot without a reactive dep.
@@ -218,8 +210,8 @@ export function useGeneration(
           // Buffer-only result (e.g. the no-content marker) — commit what streamed.
           commit(kind);
         }
-        // A run settled — let the owner refresh the app-wide usage counter (ADR-0022).
-        onCompleteRef.current?.();
+        // Usage-counter refresh is event-driven off gen:run-ended (M08.C), owned by the counter — no
+        // modal-mounted completion callback relayed from here.
       },
       onError: fail,
       onBusy: refused,

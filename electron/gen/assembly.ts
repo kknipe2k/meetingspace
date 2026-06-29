@@ -26,20 +26,44 @@ export interface AssemblyInput {
   readonly body: string;
 }
 
-// Shell markers a body-level fragment must never carry. <style> is included: the
-// shell owns ALL styling (the css step) — a fragment-local style block would bypass
-// the single code-owned style slot.
-const SHELL_MARKERS = ['<!doctype', '<html', '<head', '<body', '<style'] as const;
+// Shell tags a body-level fragment must never carry. <style> is included: the shell
+// owns ALL styling (the css step) — a fragment-local style block would bypass the
+// single code-owned style slot.
+const SHELL_TAGS = ['!doctype', 'html', 'head', 'body', 'style'] as const;
 
-/** The first shell marker found in a fragment, or null for a clean body-level fragment. */
+// M08.A: match each protected tag at a TAG BOUNDARY — the name followed by whitespace,
+// '>', '/', or end-of-string — NOT as a substring. The substring test rejected valid
+// '<header…' body markup because it contains '<head' (main.log: marker=<head). Order
+// preserves the original array precedence (doctype/html/head/body before style), so a
+// document carrying both a shell and a <style> reports the document-shell marker — the
+// signal the service uses to route recoverable documents to the normalizer.
+const SHELL_TAG_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = SHELL_TAGS.map(
+  (tag) => [`<${tag}`, new RegExp(`<${tag}(?=[\\s/>]|$)`, 'i')] as const,
+);
+
+// A document-shell marker means the model returned a (partial) DOCUMENT whose body can
+// be extracted (recoverable). A bare <style> marker is a fragment smuggling a style
+// block — no document to extract — so it stays a rejection, never normalized (M08.A).
+const DOCUMENT_SHELL_MARKERS: ReadonlySet<string> = new Set([
+  '<!doctype',
+  '<html',
+  '<head',
+  '<body',
+]);
+
+/** The first shell marker found in a fragment (at a tag boundary), or null for a clean body-level fragment. */
 export function fragmentViolation(html: string): string | null {
-  const lower = html.toLowerCase();
-  for (const marker of SHELL_MARKERS) {
-    if (lower.includes(marker)) {
+  for (const [marker, pattern] of SHELL_TAG_PATTERNS) {
+    if (pattern.test(html)) {
       return marker;
     }
   }
   return null;
+}
+
+/** True when a fragmentViolation marker denotes a document shell (recoverable), not a bare <style>. */
+export function isDocumentShellMarker(marker: string): boolean {
+  return DOCUMENT_SHELL_MARKERS.has(marker);
 }
 
 function escapeHtml(value: string): string {

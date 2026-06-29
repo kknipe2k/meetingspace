@@ -13,6 +13,7 @@ import type {
   UsageApi,
   WindowApi,
 } from '@shared/api';
+import type { GenRunEnded } from '@shared/types';
 import { STATIC_CATALOG } from '@shared/models';
 
 /*
@@ -131,6 +132,19 @@ export const usageClient: UsageClient = {
     (window as { api?: WindowApi }).api?.usage?.summary?.(sessionId) ??
     Promise.resolve({ sessionToday: EMPTY_TOTALS, allToday: EMPTY_TOTALS }),
   pricing: () => (window as { api?: WindowApi }).api?.usage?.pricing?.() ?? Promise.resolve([]),
+};
+
+// M08.C: a guarded subscription to the app-wide gen:run-ended lifecycle event — the SOLE
+// generation-refresh trigger for the passive usage counter (subscribed in useUsageCounter, where the
+// counter is owned, so a modal-closed background finish still refreshes). Guarded to the method like
+// usageClient/appClient, so the jsdom hook/component suites (no window.api) degrade to a no-op
+// subscription rather than throwing.
+export interface GenEventsClient {
+  onRunEnded(listener: (event: GenRunEnded) => void): () => void;
+}
+export const genEventsClient: GenEventsClient = {
+  onRunEnded: (listener) =>
+    (window as { api?: WindowApi }).api?.gen?.onRunEnded?.(listener) ?? (() => undefined),
 };
 
 // Document generation (M04). Like chat, the streaming generators return an

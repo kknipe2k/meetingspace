@@ -14,8 +14,10 @@ import {
   llmClient,
   noteClient as defaultNoteClient,
   usageClient as defaultUsageClient,
+  genEventsClient as defaultGenEventsClient,
   type LlmClient,
   type CatalogClient,
+  type GenEventsClient,
   type UsageClient,
 } from '../ipc/client';
 import { useChat, type ChatMessage, type UseChatOptions } from '../hooks/useChat';
@@ -56,9 +58,9 @@ export interface ChatPanelProps {
   initialScrollTop?: number;
   /** Report the chat scroll offset so the owner can persist + restore it per session (F8). */
   onScrollChange?(top: number): void;
-  /** Bumped by LLMPanel when a generation run completes, so the app-wide usage counter refreshes
-   *  to include the generation spend (ADR-0022). */
-  usageRefreshKey?: number;
+  /** Injectable for tests; defaults to the real gen-events client. The usage counter subscribes to
+   *  the app-wide gen:run-ended event through this (M08.C — sole generation-refresh trigger). */
+  genEventsClient?: GenEventsClient;
 }
 
 // Compact token abbreviation for the passive counter — 1–3 significant figures with a k/M suffix
@@ -129,7 +131,7 @@ export function ChatPanel({
   catalogClient,
   initialScrollTop,
   onScrollChange,
-  usageRefreshKey,
+  genEventsClient = defaultGenEventsClient,
 }: ChatPanelProps): ReactElement {
   const options: UseChatOptions = model ? { client, model } : { client };
   const { messages, isStreaming, error, send, retry } = useChat(sessionId, options);
@@ -137,7 +139,11 @@ export function ChatPanel({
   const toasts = useToasts();
   const { surface } = useMutationToast();
   const { models, status: catalogStatus, refresh: refreshModels } = useModelCatalog(catalogClient);
-  const { summary, refresh: refreshUsage } = useUsageCounter(sessionId, usageClient);
+  const { summary, refresh: refreshUsage } = useUsageCounter(
+    sessionId,
+    usageClient,
+    genEventsClient,
+  );
   const [draft, setDraft] = useState('');
   const [savedIds, setSavedIds] = useState<readonly string[]>([]);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -204,16 +210,9 @@ export function ChatPanel({
     wasStreaming.current = isStreaming;
   }, [isStreaming, refreshUsage]);
 
-  // Refresh the app-wide counter when a generation run completes (LLMPanel bumps usageRefreshKey)
-  // so generation spend appears without a reload. Skip the mount run — the hook already loads then.
-  const firstUsageKey = useRef(true);
-  useEffect(() => {
-    if (firstUsageKey.current) {
-      firstUsageKey.current = false;
-      return;
-    }
-    refreshUsage();
-  }, [usageRefreshKey, refreshUsage]);
+  // Generation-run refresh is handled inside useUsageCounter via the app-wide gen:run-ended event
+  // (M08.C) — no modal-mounted prop relay, so a background finish refreshes even with the doc modal
+  // closed. This panel only drives the chat-turn refresh (above).
 
   // The slow-reply reassurance (M07.B; F24): a transient app-level toast that appears once
   // the stream runs past the hint threshold and clears the moment it settles.

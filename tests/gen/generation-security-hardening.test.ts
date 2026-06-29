@@ -178,10 +178,10 @@ function rejectingClient(): AnthropicClientLike {
           model: 'm',
         });
       };
-      if (sys.startsWith('FOCUS-SYS')) return ok('FOCUS');
-      if (sys.startsWith('PLAN-SYS')) return ok(PLAN_JSON);
-      if (sys.startsWith('CSS-SYS')) return ok(GOOD_CSS);
-      if (sys.startsWith('HTML-SYS')) return ok(htmlQueue.shift() ?? SHELL_BODY);
+      if (sys.includes('FOCUS-SYS')) return ok('FOCUS');
+      if (sys.includes('PLAN-SYS')) return ok(PLAN_JSON);
+      if (sys.includes('CSS-SYS')) return ok(GOOD_CSS);
+      if (sys.includes('HTML-SYS')) return ok(htmlQueue.shift() ?? SHELL_BODY);
       return Promise.reject(new Error(`unexpected system: ${sys.slice(0, 20)}`));
     },
   };

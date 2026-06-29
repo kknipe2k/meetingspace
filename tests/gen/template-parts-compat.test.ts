@@ -87,12 +87,14 @@ function factoryRoutedClient(): { client: AnthropicClientLike; seen: StreamReque
   const client: AnthropicClientLike = {
     streamMessage(request, onChunk) {
       seen.push(request);
+      // M08.A: the factory part now rides INSIDE the composed system (mandate first,
+      // part last), so route by `includes` rather than `startsWith`.
       const sys = request.system ?? '';
-      if (sys.startsWith(PLAN_PROMPT)) {
+      if (sys.includes(PLAN_PROMPT)) {
         onChunk(PLAN_1);
-      } else if (sys.startsWith(CSS_PROMPT)) {
+      } else if (sys.includes(CSS_PROMPT)) {
         onChunk(':root{--f:1}');
-      } else if (sys.startsWith(HTML_PROMPT)) {
+      } else if (sys.includes(HTML_PROMPT)) {
         onChunk('<h2>Only</h2><p>Body.</p>');
       } else {
         return Promise.reject(new Error(`unexpected system: ${sys.slice(0, 40)}`));
@@ -128,12 +130,12 @@ describe('factory prompt parts', () => {
     // (necessary, not sufficient; the validator + sanitize layers enforce).
     expect(PLAN_PROMPT).toMatch(/json/i);
     expect(HTML_PROMPT).toMatch(/body/i);
-    // IRL fix #3 — size discipline restored (calibration: v1 docs 42–50 KB, the first
-    // round-4 real runs 96–101 KB with a 41 KB stylesheet truncating at the ceiling):
-    // the css part regains the v1 "under 400 lines" bound; the plan steers 4–6
-    // sections (the cap-10 backstop stays).
+    // IRL fix #3 — size discipline (css "under 400 lines"). M08.A reconciles the plan
+    // sizing to the new white-paper PROPORTIONALITY rule: sparse→fewer, dense→more, with
+    // the AT MOST 10 sections / 12 illustrations backstops (matching parsePlan bounds).
     expect(CSS_PROMPT).toMatch(/under 400 lines/i);
-    expect(PLAN_PROMPT).toMatch(/typically 4(–|-)6/i);
+    expect(PLAN_PROMPT).toMatch(/proportionality/i);
+    expect(PLAN_PROMPT).toMatch(/at most 10 sections/i);
     expect(DEFAULT_TEMPLATE.planPrompt).toBe(PLAN_PROMPT);
     expect(DEFAULT_TEMPLATE.cssPrompt).toBe(CSS_PROMPT);
     expect(DEFAULT_TEMPLATE.htmlPrompt).toBe(HTML_PROMPT);

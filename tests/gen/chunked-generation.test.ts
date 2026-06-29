@@ -173,18 +173,20 @@ function scriptedClient(script: PipelineScript): {
   const client: AnthropicClientLike = {
     streamMessage(request, onChunk) {
       seen.push(request);
+      // M08.A: PLAN/CSS/HTML parts now ride INSIDE the composed system (mandate first,
+      // part last), so route by `includes` not `startsWith`. FOCUS is sent raw.
       const sys = request.system ?? '';
-      if (sys.startsWith('FOCUS-SYS')) {
+      if (sys.includes('FOCUS-SYS')) {
         onChunk(script.focus ?? 'FOCUS doc');
         return Promise.resolve(DONE);
       }
-      if (sys.startsWith('PLAN-SYS')) {
+      if (sys.includes('PLAN-SYS')) {
         return respond(queues.plan.shift(), onChunk);
       }
-      if (sys.startsWith('CSS-SYS')) {
+      if (sys.includes('CSS-SYS')) {
         return respond(queues.css.shift(), onChunk);
       }
-      if (sys.startsWith('HTML-SYS')) {
+      if (sys.includes('HTML-SYS')) {
         return respond(queues.html.shift(), onChunk);
       }
       return Promise.reject(
@@ -214,7 +216,13 @@ const HAPPY: PipelineScript = {
 
 const REQUEST = { sessionId: 's1', templateId: 'tmpl-chunk' } as const;
 
-const marker = (r: StreamRequest): string => (r.system ?? '').split('\n')[0] as string;
+// M08.A: the part marker now rides inside the composed system (mandate first, part
+// last), so extract whichever pipeline marker the call carries (FOCUS is sent raw).
+const PART_MARKERS = ['FOCUS-SYS', 'PLAN-SYS', 'CSS-SYS', 'HTML-SYS'] as const;
+const marker = (r: StreamRequest): string => {
+  const sys = r.system ?? '';
+  return PART_MARKERS.find((m) => sys.includes(m)) ?? (sys.split('\n')[0] as string);
+};
 
 describe('white-paper pipeline — call graph + wires', () => {
   it('runs PLAN → CSS → HTML when a FOCUS artifact exists (no Part-1 re-run)', async () => {
@@ -418,10 +426,12 @@ describe('white-paper pipeline — structure-rejection diagnostic (M06.E IRL fix
 
   it('emits a diagnostic log line (marker + model + stop_reason) WITHOUT the body content (S4-001)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    // First HTML attempt carries a shell (rejected); the retry returns a clean body so the run
-    // still SUCCEEDS — proving the diagnostic is instrumentation only, with reject/retry unchanged.
+    // M08.A: a <style>-only body has NO document shell to recover a body from — it is a
+    // fragment smuggling a style block, so it stays a REJECTION (the normalizer recovers
+    // genuine documents, not stray style blocks). The retry returns a clean body so the
+    // run still SUCCEEDS — the diagnostic is instrumentation only, reject/retry unchanged.
     const SECRET = 'CONFIDENTIAL_BODY_MARKER_a17c';
-    const offending = `<html><head><body>${BODY}<p>${SECRET}</p></body></html>`;
+    const offending = `<style>.x{color:red}</style><h2>${SECRET}</h2>`;
     const { client } = scriptedClient({
       plan: [{ text: PLAN_JSON }],
       css: [{ text: GOOD_CSS }],
@@ -433,10 +443,10 @@ describe('white-paper pipeline — structure-rejection diagnostic (M06.E IRL fix
 
     const line = warn.mock.calls
       .map((c) => String(c[0]))
-      .find((l) => l.includes('[gen:whitepaper]'));
+      .find((l) => l.includes('[gen:whitepaper]') && l.includes('rejected'));
     expect(line).toBeDefined();
-    // The FIRST shell marker found in the body (the marker NAME, not body content).
-    expect(line).toContain('marker=<html');
+    // The shell marker found in the body (the marker NAME, not body content).
+    expect(line).toContain('marker=<style');
     // The answering model + the HTML call's stop_reason are captured for triage.
     expect(line).toContain(`model=${DEFAULT_GENERATION_MODEL}`);
     expect(line).toContain('stopReason=end_turn');
@@ -444,7 +454,91 @@ describe('white-paper pipeline — structure-rejection diagnostic (M06.E IRL fix
     // (a user-openable, shareable §10 surface whose redactor only strips credential-shaped tokens).
     expect(line).not.toContain('bodyHead=');
     expect(line).not.toContain(SECRET);
-    expect(line).not.toContain('Key point'); // a distinctive slice of BODY
+  });
+});
+
+describe('white-paper pipeline — full-document RECOVERY via parse5 normalizer (M08.A / ADR-0026)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A genuine complete document (doctype/<html>/<head>/<style>/<body>) returned where a
+  // body fragment was expected. Previously a hard structure rejection; now the normalizer
+  // extracts the body children, discards the model shell/style, and the run SUCCEEDS.
+  const FULL_DOC_BODY = `<!doctype html><html><head><style>.model{color:red}</style></head><body>${BODY}</body></html>`;
+
+  it('normalizes a recoverable full-document HTML response and persists it — NO retry', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, seen } = scriptedClient({
+      plan: [{ text: PLAN_JSON }],
+      css: [{ text: GOOD_CSS }],
+      html: [{ text: FULL_DOC_BODY }],
+    });
+    const artifacts = statefulStore([FOCUS_SEED]);
+    const service = makeService(client, artifacts);
+
+    await service.generateWhitepaper(REQUEST, { onChunk: () => undefined });
+
+    // The long pole ran exactly ONCE — recovery is not a retry.
+    expect(seen.filter((r) => marker(r) === 'HTML-SYS')).toHaveLength(1);
+    const doc = artifacts.saved.find((d) => d.kind === 'whitepaper')?.content ?? '';
+    // The recovered body content is present; the model's shell + style are gone; the
+    // stitched doc has exactly the app-owned shell + the app's css (not the model's).
+    expect(doc).toContain('<div class="callout">Key point</div>');
+    expect(doc.match(/<html/gi)).toHaveLength(1);
+    expect(doc.match(/<style/gi)).toHaveLength(1);
+    expect(doc).not.toContain('.model{color:red}');
+  });
+
+  it('emits a content-free RECOVERY diagnostic on successful normalization (spec §E)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const SECRET = 'CONFIDENTIAL_RECOVERED_BODY_3f9d';
+    const recovered = `<!doctype html><html><body>${BODY}<p>${SECRET}</p></body></html>`;
+    const { client } = scriptedClient({
+      plan: [{ text: PLAN_JSON }],
+      css: [{ text: GOOD_CSS }],
+      html: [{ text: recovered }],
+    });
+    const service = makeService(client, statefulStore([FOCUS_SEED]));
+
+    await service.generateWhitepaper(REQUEST, { onChunk: () => undefined });
+
+    const line = warn.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes('[gen:whitepaper]') && l.includes('recovered'));
+    expect(line).toBeDefined();
+    // Observability fields for the watched intermittent-rejection item: the marker that
+    // tripped, the model, and the stop_reason — NEVER the recovered body content (S4-001).
+    expect(line).toContain('marker=<');
+    expect(line).toContain(`model=${DEFAULT_GENERATION_MODEL}`);
+    expect(line).not.toContain(SECRET);
+  });
+
+  it('a max_tokens full document is TRUNCATED first — never parse5-repaired into success (mutation: move the truncation check after the normalizer → this fails)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { client, seen } = scriptedClient({
+      plan: [{ text: PLAN_JSON }],
+      css: [{ text: GOOD_CSS }],
+      html: [
+        { text: FULL_DOC_BODY, stopReason: 'max_tokens' },
+        { text: FULL_DOC_BODY, stopReason: 'max_tokens' },
+      ],
+    });
+    const artifacts = statefulStore([FOCUS_SEED]);
+    const service = makeService(client, artifacts);
+
+    try {
+      await service.generateWhitepaper(REQUEST, { onChunk: () => undefined });
+      throw new Error('expected the run to reject');
+    } catch (error) {
+      expect(error).toBeInstanceOf(LlmServiceError);
+      // Truncation is the failure class — NOT structure, and the doc is never persisted.
+      expect((error as LlmServiceError).message).toMatch(
+        /Writing the document failed — output truncated at the length limit/,
+      );
+    }
+    expect(seen.filter((r) => marker(r) === 'HTML-SYS')).toHaveLength(2);
+    expect(artifacts.saved.map((d) => d.kind)).toEqual(['focus']);
   });
 });
 
@@ -453,12 +547,15 @@ describe('white-paper pipeline — HTML body-only validation', () => {
     vi.restoreAllMocks();
   });
 
-  it('a shell-bearing body is a prompt bug: retried once, never an assembly input', async () => {
+  it('an UNRECOVERABLE shell-only body (no document to extract) is a prompt bug: retried once, never an assembly input', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // A <style>-only fragment carries no document shell — there is no body to recover, so
+    // it stays a rejection (one retry → success here). The recoverable full-document case
+    // is covered by the M08.A recovery suite above.
     const { client, seen } = scriptedClient({
       plan: [{ text: PLAN_JSON }],
       css: [{ text: GOOD_CSS }],
-      html: [{ text: `<html><body>${BODY}</body></html>` }, { text: BODY }],
+      html: [{ text: `<style>.smuggled{}</style>${BODY}` }, { text: BODY }],
     });
     const artifacts = statefulStore([FOCUS_SEED]);
     const service = makeService(client, artifacts);
@@ -469,6 +566,8 @@ describe('white-paper pipeline — HTML body-only validation', () => {
     const doc = artifacts.saved.find((d) => d.kind === 'whitepaper')?.content ?? '';
     expect(doc.match(/<html/gi)).toHaveLength(1);
     expect(doc.match(/<body/gi)).toHaveLength(1);
+    // The smuggled style block never reached the assembly input.
+    expect(doc).not.toContain('.smuggled{}');
   });
 
   it('a FENCED body is unwrapped (no literal fence in the stitched doc)', async () => {
@@ -706,7 +805,9 @@ describe('white-paper pipeline — typed failures NAME the step + validation (IR
 
   it('body-structure double-failure → "Writing the document failed — document-structure validation."', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const shell = `<html><body>${BODY}</body></html>`;
+    // M08.A: an UNRECOVERABLE body (a <style>-only fragment with no document shell to
+    // extract) double-fails on structure — a recoverable full document would normalize.
+    const shell = `<style>.x{}</style><h2>only a smuggled style block</h2>`;
     const { client } = scriptedClient({
       plan: [{ text: PLAN_JSON }],
       css: [{ text: GOOD_CSS }],

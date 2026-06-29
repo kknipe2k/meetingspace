@@ -47,20 +47,38 @@ describe('app-adapted two-part prompt', () => {
     expect(FOCUS_PROMPT).toContain('B: Implementation');
   });
 
-  it('preserves Part 2 self-contained-HTML + illustration mandates (exercised in Stage B)', () => {
+  it('the white-paper prompt is the new body-level-HTML + illustration-forward text (M08.A)', () => {
+    // The M08.A replacement aligns Part 2 with the pipeline: it emits body-level HTML
+    // (the app owns the shell + stylesheet), not a self-contained document.
     const lower = WHITEPAPER_PROMPT.toLowerCase();
-    expect(lower).toContain('self-contained');
-    expect(lower).toContain('html');
+    expect(lower).toContain('body-level html');
+    expect(lower).toContain('semantic html');
     expect(lower).toContain('illustration');
   });
 
-  it('instructs the model NOT to add external font links (M04.C: fonts are app-provided)', () => {
+  it('carries the new PROPORTIONALITY RULE in both replaced prompts (M08.A); old default text is gone', () => {
+    expect(FOCUS_PROMPT).toContain('PROPORTIONALITY RULE');
+    expect(WHITEPAPER_PROMPT).toContain('PROPORTIONALITY RULE');
+    // The old default seed text must not survive the replacement.
+    expect(FOCUS_PROMPT).not.toContain('Targeted Comprehensive Learning');
+    expect(WHITEPAPER_PROMPT).not.toContain('visually rich, deeply analytical');
+  });
+
+  it('instructs the model NOT to add external font links (fonts are app-provided; ADR-0013)', () => {
     // Fonts are self-hosted as base64 @font-face and external <link>s are stripped by
-    // the sanitizer (ADR-0013), so the prompts must stop requesting a Google-Fonts
-    // <link> — otherwise the model wastes tokens emitting a tag that gets removed.
+    // the sanitizer (ADR-0013), so the prompts must not request external fonts/links —
+    // otherwise the model wastes tokens emitting a tag that gets removed. The minutes
+    // prompt keeps its M04.C wording; the new white-paper prompt forbids external fonts
+    // + stylesheet links in its no-external-resources clause.
+    const wpLower = WHITEPAPER_PROMPT.toLowerCase();
+    expect(wpLower).toContain('external fonts');
+    expect(wpLower).toContain('stylesheet links');
+
+    const minLower = MINUTES_PROMPT.toLowerCase();
+    expect(minLower).toContain('do not add external font');
+
     for (const prompt of [WHITEPAPER_PROMPT, MINUTES_PROMPT]) {
       const lower = prompt.toLowerCase();
-      expect(lower).toContain('do not add external font');
       expect(lower).not.toContain('google fonts');
       expect(lower).not.toContain('googleapis');
     }

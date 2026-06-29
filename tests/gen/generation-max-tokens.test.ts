@@ -140,7 +140,7 @@ function ceilingClient(script: Script): { client: AnthropicClientLike; seen: Str
       seen.push(request);
       const cap = request.maxTokens;
       const sys = request.system ?? '';
-      if (sys.startsWith('FOCUS-SYS')) {
+      if (sys.includes('FOCUS-SYS')) {
         onChunk('FOCUS doc');
         return Promise.resolve({
           stopReason: 'end_turn',
@@ -148,9 +148,9 @@ function ceilingClient(script: Script): { client: AnthropicClientLike; seen: Str
           model: 'm',
         });
       }
-      if (sys.startsWith('PLAN-SYS')) return serve(queues.plan, cap, onChunk);
-      if (sys.startsWith('CSS-SYS')) return serve(queues.css, cap, onChunk);
-      if (sys.startsWith('HTML-SYS')) return serve(queues.html, cap, onChunk);
+      if (sys.includes('PLAN-SYS')) return serve(queues.plan, cap, onChunk);
+      if (sys.includes('CSS-SYS')) return serve(queues.css, cap, onChunk);
+      if (sys.includes('HTML-SYS')) return serve(queues.html, cap, onChunk);
       return Promise.reject(new Error(`unexpected system: ${sys.slice(0, 30)}`));
     },
   };
@@ -223,7 +223,7 @@ describe('GENERATION_MAX_TOKENS — the cap holds a real white-paper body', () =
       );
     }
     // One retry then typed failure; nothing persisted as final.
-    expect(seen.filter((r) => (r.system ?? '').startsWith('HTML-SYS'))).toHaveLength(2);
+    expect(seen.filter((r) => (r.system ?? '').includes('HTML-SYS'))).toHaveLength(2);
     expect(artifacts.saved.map((d) => d.kind)).toEqual(['focus']);
   });
 });

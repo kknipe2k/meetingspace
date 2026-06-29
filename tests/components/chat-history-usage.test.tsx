@@ -133,22 +133,7 @@ describe('ChatPanel — persisted history + usage counter', () => {
     expect(usage.summary).toHaveBeenCalledWith('s1');
   });
 
-  it('refreshes the counter when a generation run completes (usageRefreshKey bump)', async () => {
-    const usage = usageClient(SUMMARY);
-    const { rerender } = render(
-      <ChatPanel sessionId="s1" client={llmClient([])} usageClient={usage} usageRefreshKey={0} />,
-    );
-    await waitFor(() => expect(usage.summary).toHaveBeenCalled());
-    const callsAfterMount = (usage.summary as ReturnType<typeof vi.fn>).mock.calls.length;
-
-    // LLMPanel bumps the key when a generation run completes → the counter re-queries app-wide.
-    rerender(
-      <ChatPanel sessionId="s1" client={llmClient([])} usageClient={usage} usageRefreshKey={1} />,
-    );
-    await waitFor(() =>
-      expect((usage.summary as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
-        callsAfterMount,
-      ),
-    );
-  });
+  // M08.C: generation-run refresh moved off the modal-mounted `usageRefreshKey` prop onto the
+  // app-wide `gen:run-ended` event (subscribed in useUsageCounter). Covered by
+  // tests/components/usage-counter-events.test.tsx + tests/hooks/useUsageCounter.test.tsx.
 });

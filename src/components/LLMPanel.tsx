@@ -35,9 +35,6 @@ export function LLMPanel({
 }: LLMPanelProps): ReactElement {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
-  // Bumped when a generation run completes, signalling the (app-wide) chat usage counter to refresh
-  // so generation spend appears without a reload (ADR-0022).
-  const [usageToken, setUsageToken] = useState(0);
   // One app-wide model selection drives both chat and document generation. Legacy per-surface
   // preferences are read as a migration fallback, but every new change writes selectedModel.
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_CHAT_MODEL);
@@ -147,7 +144,6 @@ export function LLMPanel({
           onModelChange={handleModelChange}
           onOpenSettings={() => setSettingsOpen(true)}
           onScrollChange={(top) => handleChatScroll(session.id, top)}
-          usageRefreshKey={usageToken}
           {...(typeof chatScrollRef.current[session.id] === 'number'
             ? { initialScrollTop: chatScrollRef.current[session.id] }
             : {})}
@@ -185,7 +181,6 @@ export function LLMPanel({
             sessionId={session.id}
             generationModel={selectedModel}
             onGenerationModelChange={handleModelChange}
-            onGenerationComplete={() => setUsageToken((t) => t + 1)}
             {...(sessionName ? { sessionName } : {})}
           />
         </Modal>

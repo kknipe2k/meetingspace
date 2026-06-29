@@ -106,11 +106,11 @@ function gatewayClient(): AnthropicClientLike {
           model: GATEWAY_ACTUAL,
         });
       };
-      if (sys.startsWith('FOCUS-SYS')) return reply('FOCUS DOC');
-      if (sys.startsWith('PLAN-SYS')) return reply(PLAN_JSON);
-      if (sys.startsWith('CSS-SYS')) return reply(GOOD_CSS);
-      if (sys.startsWith('HTML-SYS')) return reply(BODY);
-      if (sys.startsWith('MINUTES-SYS')) return reply('<h1>Minutes</h1>');
+      if (sys.includes('FOCUS-SYS')) return reply('FOCUS DOC');
+      if (sys.includes('PLAN-SYS')) return reply(PLAN_JSON);
+      if (sys.includes('CSS-SYS')) return reply(GOOD_CSS);
+      if (sys.includes('HTML-SYS')) return reply(BODY);
+      if (sys.includes('MINUTES-SYS')) return reply('<h1>Minutes</h1>');
       return Promise.reject(new Error(`unexpected system: ${sys.slice(0, 24)}`));
     },
   };

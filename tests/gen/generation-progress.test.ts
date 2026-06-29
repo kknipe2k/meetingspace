@@ -78,11 +78,11 @@ function pipelineFake(): AnthropicClientLike {
   return {
     streamMessage: (request: StreamRequest, onChunk) => {
       const sys = request.system ?? '';
-      if (sys.startsWith('PLAN-SYS')) {
+      if (sys.includes('PLAN-SYS')) {
         onChunk(PLAN_JSON);
-      } else if (sys.startsWith('CSS-SYS')) {
+      } else if (sys.includes('CSS-SYS')) {
         onChunk(':root{--p:1}\n.panel{border:1px solid}');
-      } else if (sys.startsWith('HTML-SYS')) {
+      } else if (sys.includes('HTML-SYS')) {
         onChunk('<h2>Core</h2><div class="panel">Body.</div>');
       } else {
         onChunk('FOCUS doc');

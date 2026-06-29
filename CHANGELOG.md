@@ -2,6 +2,16 @@
 
 Notable changes, newest first.
 
+## 1.3.3 — 2026-06-29
+
+- **Cleaner Window menu:** the native **Window** menu no longer shows a dead "Zoom" item (a macOS-style control that did nothing on Windows). Minimize and Close remain; on macOS the menu keeps Minimize and Bring All to Front. The working text zoom under **View ▸ Zoom In / Zoom Out / Actual Size** (and Ctrl +/−/0) is unchanged.
+
+## 1.3.2 — 2026-06-29
+
+- **White paper generation is more reliable:** a document-structure check was wrongly rejecting valid white papers that used a page `<header>` (it mistook it for a document `<head>`), causing intermittent "structure validation" failures. The check is fixed, and a white paper that comes back as a full HTML page (instead of a body fragment) is now recovered automatically instead of failing.
+- **Editing the minutes prompt no longer triggers false errors:** the minutes generator now has a fixed output contract that your prompt edits can't accidentally break, rejects a response that was cut off at the length limit (instead of saving a partial document), and cleans up the returned HTML before saving.
+- **Accurate usage counter:** the session/today usage counter now refreshes even when the generation window is closed, can't be thrown off by out-of-order updates, and counts every Claude call a generation makes — fixing cases where it under-reported real spend.
+
 ## 1.3.1 — 2026-06-24
 
 - **Build-attribution placement:** edited the placement of the Claude build attribution — it no longer appears in the in-app About dialog or the first-run onboarding screen (it remains in the project README).
