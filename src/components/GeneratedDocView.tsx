@@ -44,9 +44,6 @@ export interface GeneratedDocViewProps {
   /** Resolves a session id to its display name — the busy toast names the LIVE run's
    *  session, which may not be this modal's session (App passes the live list). */
   sessionName?(sessionId: string): string | undefined;
-  /** Called when a generation run completes, so the host can refresh the app-wide usage counter
-   *  (ADR-0022 — generation spend counts too). */
-  onGenerationComplete?(): void;
 }
 
 /*
@@ -71,7 +68,6 @@ export function GeneratedDocView({
   generationModel,
   onGenerationModelChange,
   sessionName,
-  onGenerationComplete,
 }: GeneratedDocViewProps): ReactElement {
   const {
     docFor,
@@ -88,7 +84,6 @@ export function GeneratedDocView({
     refresh,
   } = useGeneration(sessionId, {
     ...(client ? { client } : {}),
-    ...(onGenerationComplete ? { onComplete: onGenerationComplete } : {}),
   });
   const { show, dismiss } = useToasts();
 

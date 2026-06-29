@@ -21,7 +21,8 @@ import type {
 } from '../llm/anthropic-client';
 import { LlmServiceError, mapAnthropicError } from '../llm/errors';
 
-import { assembleDocument, fragmentViolation } from './assembly';
+import { assembleDocument, fragmentViolation, isDocumentShellMarker } from './assembly';
+import { normalizeBodyFragment, normalizeMinutesDocument } from './normalize-html';
 import {
   extractCss,
   extractVocabulary,
@@ -34,9 +35,11 @@ import {
 import type { CorpusAssetReader, CorpusNoteReader } from './corpus';
 import { buildCorpus } from './corpus';
 import {
+  composeSystemPrompt,
   CSS_PROMPT,
   DEFAULT_TEMPLATE,
   HTML_PROMPT,
+  MINUTES_OUTPUT_CONTRACT,
   MINUTES_PROMPT,
   PLAN_PROMPT,
   SEED_TEMPLATE_ID,
@@ -198,6 +201,17 @@ function stepFailure(step: PipelineStep, validation: PipelineValidation): LlmSer
   return new LlmServiceError(
     'UNKNOWN',
     `${STEP_LABEL[step]} failed — ${VALIDATION_LABEL[validation]}.`,
+  );
+}
+
+// M08.B: minutes failures reuse the white-paper UNKNOWN code + VALIDATION_LABEL phrasing so
+// the user sees ALIGNED copy ("Writing the minutes failed — output truncated at the length
+// limit." / "— document-structure validation."). Static + content-free (Hard Rule §10) —
+// never carries model output, never the generated body.
+function minutesFailure(validation: 'truncated' | 'structure'): LlmServiceError {
+  return new LlmServiceError(
+    'UNKNOWN',
+    `Writing the minutes failed — ${VALIDATION_LABEL[validation]}.`,
   );
 }
 
@@ -474,12 +488,14 @@ export function createGenerationService({
     const maxTokens = resolveMaxTokens(model);
 
     // The pipeline prompt parts: the template's own when present, the factory part
-    // otherwise (v1 forks carry none — they keep working unchanged). The template's
-    // whitepaperPrompt rides along as the document MANDATE in every call, so a fork's
-    // customization still shapes the output; each part's output rules override
-    // conflicting format instructions in the mandate.
+    // otherwise (v1 forks carry none — they keep working unchanged). M08.A flips the
+    // composition: the template's whitepaperPrompt is the editable <document_mandate>
+    // FIRST, and each call's part is the immutable <non_negotiable_output_contract>
+    // LAST — so the pipeline's output-shape rules carry recency weight and an edited
+    // mandate can no longer fight them (the contract block declares it overrides
+    // conflicting mandate instructions).
     const composeSystem = (part: string): string =>
-      `${part}\n\n<document_mandate>\n${template.whitepaperPrompt}\n</document_mandate>`;
+      composeSystemPrompt(template.whitepaperPrompt, part);
     const systems = {
       plan: composeSystem(template.planPrompt ?? PLAN_PROMPT),
       css: composeSystem(template.cssPrompt ?? CSS_PROMPT),
@@ -491,6 +507,20 @@ export function createGenerationService({
 
     let usage = ZERO_USAGE;
     let lastResult: StreamResult | null = null;
+
+    // M08.C: record each COMPLETED pipeline call's real usage ONCE (kind 'whitepaper', the model the
+    // call answered with). This replaces the single end-of-run aggregate write — so stages completed
+    // before a later failure/cancel are accounted, and a retried call's attempts are each counted.
+    // The aggregate is retained ONLY in the returned GenDone.usage (the per-call rows sum to it, so
+    // there is no double-count). A call that THREW returned no usage and is never recorded (usage is
+    // never invented). The internal FOCUS call records its own 'focus' row in generateFocus.
+    const recordCall = (result: StreamResult): void =>
+      usageRecorder?.record({
+        sessionId: request.sessionId,
+        kind: 'whitepaper',
+        model: result.model ?? model,
+        usage: result.usage,
+      });
 
     // ---- PLAN call (cheap; one retry; parse failure shares the attempt budget) -----
     throwIfCancelled(handlers);
@@ -517,6 +547,7 @@ export function createGenerationService({
         text = call.text;
         truncatedCall = isTruncated(call.result);
         usage = addUsage(usage, call.result.usage);
+        recordCall(call.result);
         lastResult = call.result;
       } catch (error) {
         if (isCancelled(error) || attempt === CALL_ATTEMPTS) {
@@ -584,6 +615,7 @@ export function createGenerationService({
         text = call.text;
         truncatedCall = isTruncated(call.result);
         usage = addUsage(usage, call.result.usage);
+        recordCall(call.result);
         lastResult = call.result;
       } catch (error) {
         if (isCancelled(error) || attempt === CALL_ATTEMPTS) {
@@ -660,6 +692,7 @@ export function createGenerationService({
         text = call.text;
         truncatedCall = isTruncated(call.result);
         usage = addUsage(usage, call.result.usage);
+        recordCall(call.result);
         lastResult = call.result;
       } catch (error) {
         if (isCancelled(error) || attempt === CALL_ATTEMPTS) {
@@ -673,22 +706,45 @@ export function createGenerationService({
         }
         continue;
       }
-      // Unwrap a whole-body markdown fence, THEN validate body-only: a model-emitted
-      // shell (or <style> block — the html call owns NO css) is a prompt bug, not a
-      // stitch input — a failed attempt, retried once, then the run fails typed.
+      // Unwrap a whole-body markdown fence, THEN validate body-only. NOTE: truncation
+      // (max_tokens) is already handled ABOVE — a truncated response hard-fails before
+      // we ever reach the normalizer, so parse5 can never repair a truncated document
+      // into apparent success (M08.A; ADR-0026 completeness caution).
       const unwrapped = stripFence(text).trim();
       const shellMarker = fragmentViolation(unwrapped);
       if (shellMarker !== null) {
-        // Diagnostic instrumentation ONLY (M06.E IRL fix #3) — the reject/retry semantics
-        // below are UNCHANGED. The structure-validation rejection is the ~50% white-paper
-        // failure mode and main.log captured nothing about it. Log WHICH shell marker tripped,
-        // the model + stop_reason of the offending HTML call, and the attempt — but NEVER the
-        // body itself. Audit S4-001: `redactSecrets` only strips credential-shaped tokens, and
-        // main.log is a user-openable, shareable §10 surface, so logging a slice of the
-        // generated body (derived from meeting content) would leak the user's own content.
-        // The marker + provider metadata are enough to triage the failure without the content.
+        // M08.A recovery: when the model returned a (partial) DOCUMENT instead of a body
+        // fragment, extract only the body's children via parse5 BEFORE failing — discard
+        // the model shell/head/style and proceed. A bare <style> marker carries no
+        // document to extract, so it is not normalized (it stays a rejection).
+        const normalized = isDocumentShellMarker(shellMarker)
+          ? normalizeBodyFragment(unwrapped)
+          : null;
+        if (normalized?.ok) {
+          // §E — a DISTINCT, content-free "recovered" diagnostic (separate category from
+          // the rejection line below), teed to main.log for the watched intermittent
+          // structure-rejection item. Log the marker + provider metadata ONLY, NEVER the
+          // recovered body (derived from meeting content; S4-001).
+          console.warn(
+            `[gen:whitepaper] HTML structure recovered via normalizer — marker=${shellMarker} ` +
+              `model=${lastResult?.model ?? model} stopReason=${lastResult?.stopReason ?? 'unknown'} ` +
+              `attempt=${attempt}/${CALL_ATTEMPTS}`,
+          );
+          body = normalized.fragment;
+          continue;
+        }
+        // Diagnostic instrumentation (M06.E IRL fix #3) — the reject/retry semantics are
+        // UNCHANGED. The structure-validation rejection is the ~50% white-paper failure
+        // mode and main.log captured nothing about it. Log WHICH shell marker tripped, the
+        // normalize reason when extraction was attempted, the model + stop_reason of the
+        // offending HTML call, and the attempt — but NEVER the body itself. Audit S4-001:
+        // `redactSecrets` only strips credential-shaped tokens, and main.log is a
+        // user-openable, shareable §10 surface, so logging a slice of the generated body
+        // (derived from meeting content) would leak the user's own content. The marker +
+        // provider metadata are enough to triage the failure without the content.
+        const reasonSuffix = normalized ? ` reason=${normalized.reason}` : '';
         console.warn(
-          `[gen:whitepaper] HTML structure validation rejected the body — marker=${shellMarker} ` +
+          `[gen:whitepaper] HTML structure validation rejected the body — marker=${shellMarker}${reasonSuffix} ` +
             `model=${lastResult?.model ?? model} stopReason=${lastResult?.stopReason ?? 'unknown'} ` +
             `attempt=${attempt}/${CALL_ATTEMPTS}`,
         );
@@ -734,6 +790,11 @@ export function createGenerationService({
           text = call.text;
           truncatedCall = isTruncated(call.result);
           usage = addUsage(usage, call.result.usage);
+          // M08.D (M08.V 🔴-1): the css-PATCH remediation is a COMPLETED API call like plan/css/html —
+          // record it per-call too. M08.C added per-call recording everywhere EXCEPT here, so when
+          // subset guard #2 fires the patch tokens (still summed into GenDone.usage) were counted zero
+          // times in the persisted counter. Record once, in the same place the other loops do.
+          recordCall(call.result);
           lastResult = call.result;
         } catch (error) {
           if (isCancelled(error) || attempt === CALL_ATTEMPTS) {
@@ -780,12 +841,8 @@ export function createGenerationService({
       model: answeredModel,
     });
 
-    usageRecorder?.record({
-      sessionId: request.sessionId,
-      kind: 'whitepaper',
-      model: answeredModel,
-      usage,
-    });
+    // No aggregate usage write here (M08.C): each completed call was recorded individually above, so
+    // a final summed record() would double-count. The aggregate is still RETURNED in GenDone.usage.
 
     return {
       stopReason: lastResult?.stopReason ?? 'end_turn',
@@ -831,36 +888,81 @@ export function createGenerationService({
       handlers,
       model,
       maxTokens,
-      // The template's editable minutes prompt; absent OR cleared-to-empty (it's a
-      // user-editable textarea) → the factory default, so minutes never runs prompt-less.
-      system: template.minutesPrompt || MINUTES_PROMPT,
+      // M08.B: the editable minutes mandate composed FIRST with the IMMUTABLE output
+      // contract LAST (composeSystemPrompt) — so an edited prompt can't fight the
+      // structural/security rules (the contract declares it overrides conflicting mandate
+      // instructions). Absent OR cleared-to-empty (it's a user-editable textarea) → the
+      // factory default, so minutes never runs prompt-less.
+      system: composeSystemPrompt(
+        template.minutesPrompt || MINUTES_PROMPT,
+        MINUTES_OUTPUT_CONTRACT,
+      ),
       content,
       onDelta: handlers.onChunk,
     });
 
-    // Cancelled by the time we'd persist? Write nothing (F11).
+    // Cancelled by the time we'd persist? Write nothing (F11). Cancel is FREE — it records
+    // no usage; it is checked before the spend-accounting paths below.
     throwIfCancelled(handlers);
 
-    // Persist + record the model the API ACTUALLY ANSWERED WITH (result.model), not the
-    // requested id — same rationale as focus/chat (truthful badge; surfaces a gateway
-    // substitution). Fall back to the resolved request id only if none was returned.
+    // The model the API ACTUALLY ANSWERED WITH (result.model), not the requested id — same
+    // rationale as focus/chat (truthful badge; surfaces a gateway substitution). Fall back
+    // to the resolved request id only if none was returned.
     const answeredModel = result.model || model;
+
+    // Spend principle (M08.B): account the REAL provider usage on EVERY terminal path that
+    // returned terminal usage — success, truncation-reject, AND normalize-reject. The tokens
+    // were spent, so they are never discarded at a throw and never invented. (Whether the
+    // per-call truncation/reject ledger keeps exactly this shape is Stage C's charter; here
+    // we only guarantee real-usage-not-discarded.)
+    const recordUsage = (): void =>
+      usageRecorder?.record({
+        sessionId: request.sessionId,
+        kind: 'minutes',
+        model: answeredModel,
+        usage: result.usage,
+      });
+
+    // Truncation BEFORE the normalizer (ADR-0026 completeness caution): a max_tokens
+    // response is incomplete by definition and must hard-fail into the typed error — never
+    // be parse5-repaired into apparent success. The incomplete HTML is never persisted; the
+    // body is never logged (S4-001) — only the category + provider metadata.
+    if (result.stopReason === 'max_tokens') {
+      recordUsage();
+      console.warn(
+        `[gen:minutes] rejected — reason=truncated model=${answeredModel} ` +
+          `stopReason=${result.stopReason}`,
+      );
+      throw minutesFailure('truncated');
+    }
+
+    // Normalize the SINGLE self-contained minutes document (parse5; M08.B/ADR-0026): keep
+    // one shell + at most one head stylesheet, strip prohibited constructs structurally,
+    // require meaningful body content. Minutes are NOT routed through the white-paper
+    // fragmentViolation validator (a full <html> minutes doc is valid). A document that
+    // cannot be recovered safely hard-fails the typed error rather than persisting. The
+    // renderer DOMPurify + sandbox + CSP remain the load-bearing security layer.
+    const normalized = normalizeMinutesDocument(html);
+    if (!normalized.ok) {
+      recordUsage();
+      console.warn(
+        `[gen:minutes] rejected — reason=${normalized.reason} model=${answeredModel} ` +
+          `stopReason=${result.stopReason ?? 'unknown'}`,
+      );
+      throw minutesFailure('structure');
+    }
+
     const saved = artifacts.saveArtifact({
       sessionId: request.sessionId,
       kind: 'minutes',
-      content: html,
+      content: normalized.document,
       // Record the template that produced these minutes (it has an editable prompt now),
       // so the renderer can show the template chip on the persisted doc too.
       templateId: template.id,
       model: answeredModel,
     });
 
-    usageRecorder?.record({
-      sessionId: request.sessionId,
-      kind: 'minutes',
-      model: answeredModel,
-      usage: result.usage,
-    });
+    recordUsage();
 
     return { ...result, kind: 'minutes', artifactId: saved.id };
   }

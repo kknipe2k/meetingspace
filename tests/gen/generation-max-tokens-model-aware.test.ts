@@ -114,7 +114,7 @@ function ceilingClient(htmlTokens: number): { client: AnthropicClientLike; seen:
       seen.push(request);
       const cap = request.maxTokens; // the REAL value the service passed
       const sys = request.system ?? '';
-      if (sys.startsWith('FOCUS-SYS')) {
+      if (sys.includes('FOCUS-SYS')) {
         onChunk('FOCUS');
         return Promise.resolve({
           stopReason: 'end_turn',
@@ -122,9 +122,9 @@ function ceilingClient(htmlTokens: number): { client: AnthropicClientLike; seen:
           model: 'm',
         });
       }
-      if (sys.startsWith('PLAN-SYS')) return serve(plan, cap, onChunk);
-      if (sys.startsWith('CSS-SYS')) return serve(css, cap, onChunk);
-      if (sys.startsWith('HTML-SYS')) return serve(htmlQueue.shift(), cap, onChunk);
+      if (sys.includes('PLAN-SYS')) return serve(plan, cap, onChunk);
+      if (sys.includes('CSS-SYS')) return serve(css, cap, onChunk);
+      if (sys.includes('HTML-SYS')) return serve(htmlQueue.shift(), cap, onChunk);
       return Promise.reject(new Error(`unexpected system: ${sys.slice(0, 20)}`));
     },
   };

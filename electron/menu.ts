@@ -122,7 +122,20 @@ export function buildAppMenuTemplate({
     ],
   });
 
-  template.push({ role: 'windowMenu' });
+  // M09: an explicit Window submenu replaces the built-in `{ role: 'windowMenu' }`. That role's
+  // default carried a macOS-style "Zoom" (window-maximize) item that is dead/orphaned on Windows —
+  // the app's real zoom lives in View ▸ Zoom In/Out/Actual Size. A role's items can't be removed
+  // individually, so the whole role is replaced with the standard window controls minus zoom:
+  // Minimize + Close on Win/Linux, Minimize + Bring All to Front on macOS.
+  template.push({
+    label: 'Window',
+    submenu: [
+      { role: 'minimize' },
+      ...(mac
+        ? ([{ type: 'separator' }, { role: 'front' }] as MenuItemConstructorOptions[])
+        : ([{ role: 'close' }] as MenuItemConstructorOptions[])),
+    ],
+  });
 
   // Help (M06.E): About shows the version + AI-assistance disclosure (no update affordance —
   // ADR-0023); Open Logs Folder reveals the findable main.log directory. A plain submenu (not

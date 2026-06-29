@@ -9,7 +9,10 @@ export default defineConfig({
     // externalizeDepsPlugin keeps `dependencies` (notably the native
     // better-sqlite3 addon) out of the Rollup bundle — they are require()'d
     // from node_modules at runtime instead. Bundling a .node binary breaks it.
-    plugins: [externalizeDepsPlugin()],
+    // EXCEPTION (M08.A / ADR-0026): parse5 is ESM-only, so a packaged CommonJS
+    // main cannot require() it — it MUST be bundled. Excluding it from
+    // externalization makes Rollup inline it into main.js.
+    plugins: [externalizeDepsPlugin({ exclude: ['parse5'] })],
     resolve: { alias: sharedAlias },
     build: {
       outDir: 'out/main',

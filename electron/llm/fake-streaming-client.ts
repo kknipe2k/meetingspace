@@ -85,11 +85,12 @@ export function createFakeGenerationClient(delayMs = 0, failMode = ''): Anthropi
       };
       const system = request.system ?? '';
 
-      // M07.C round-4 pipeline calls — routed by the FACTORY part prompts (the
-      // composed system is `<part>\n\n<document_mandate>…`, so startsWith matches the
-      // default template the e2e uses). Checked FIRST: the mandate inside the css/html
-      // systems contains the legacy "White Paper" marker.
-      if (system.startsWith(PLAN_PROMPT)) {
+      // M07.C round-4 pipeline calls — routed by the FACTORY part prompts. M08.A flips
+      // the composition to `<document_mandate>…</document_mandate>\n\n
+      // <non_negotiable_output_contract>\n<part>…`, so the part rides INSIDE the system
+      // and we match by `includes` (not startsWith). Checked FIRST so the pipeline routes
+      // win before the single-call minutes/whitepaper fallbacks below.
+      if (system.includes(PLAN_PROMPT)) {
         onChunk(
           JSON.stringify({
             sections: [
@@ -111,7 +112,7 @@ export function createFakeGenerationClient(delayMs = 0, failMode = ''): Anthropi
         );
         return finish(done);
       }
-      if (system.startsWith(CSS_PROMPT)) {
+      if (system.includes(CSS_PROMPT)) {
         if (failMode === 'css') {
           // Rule-less prose — fails extractCss validation on both attempts.
           onChunk('I am unable to produce a stylesheet for this document right now.');
@@ -126,7 +127,7 @@ export function createFakeGenerationClient(delayMs = 0, failMode = ''): Anthropi
         );
         return finish(done);
       }
-      if (system.startsWith(HTML_PROMPT)) {
+      if (system.includes(HTML_PROMPT)) {
         // The complete BODY (no shell, no css) that EMBEDS the FOCUS context AND
         // hostile script/onerror vectors — the sanitize + sandbox layers must keep
         // the stitched document inert end to end (the e2e asserts no GEN_XSS). Uses

@@ -97,12 +97,14 @@ function chunkedClient(): { client: AnthropicClientLike; seen: StreamRequest[] }
   const client: AnthropicClientLike = {
     streamMessage: (request, onChunk) => {
       seen.push(request);
+      // M08.A: PLAN/CSS/HTML parts ride INSIDE the composed system (mandate first, part
+      // last), so route by `includes`; the FOCUS call is sent raw (falls to else).
       const sys = request.system ?? '';
-      if (sys.startsWith('PLAN-SYS')) {
+      if (sys.includes('PLAN-SYS')) {
         onChunk(PLAN_1);
-      } else if (sys.startsWith('CSS-SYS')) {
+      } else if (sys.includes('CSS-SYS')) {
         onChunk(':root{--w:1}');
-      } else if (sys.startsWith('HTML-SYS')) {
+      } else if (sys.includes('HTML-SYS')) {
         onChunk('<h1>Paper</h1><p>Body.</p>');
       } else {
         onChunk('FOCUS doc');
@@ -169,7 +171,9 @@ describe('createGenerationService.generateWhitepaper', () => {
 
     // No FOCUS-system call: the run goes straight into the pipeline.
     expect(seen.some((r) => r.system?.startsWith('FOCUS-SYSTEM-PROMPT'))).toBe(false);
-    expect(seen[0]?.system?.startsWith('PLAN-SYS')).toBe(true);
+    // M08.A: the PLAN part now rides inside the composed system (mandate first, part last).
+    expect(seen[0]?.system?.startsWith('<document_mandate>')).toBe(true);
+    expect(seen[0]?.system?.includes('PLAN-SYS')).toBe(true);
     // The persisted FOCUS doc is the pipeline calls' primary reference.
     expect(JSON.stringify(seen[0]?.messages)).toContain('EXISTING FOCUS DOC');
     expect(done.kind).toBe('whitepaper');
@@ -190,7 +194,7 @@ describe('createGenerationService.generateWhitepaper', () => {
     // A fresh FOCUS artifact was persisted (the seed + the re-analysis).
     expect(artifacts.saved.filter((d) => d.kind === 'focus')).toHaveLength(2);
     // The pipeline wrote from the FRESH FOCUS ("FOCUS doc"), not the stale seed.
-    const planCall = seen.find((r) => r.system?.startsWith('PLAN-SYS'));
+    const planCall = seen.find((r) => r.system?.includes('PLAN-SYS'));
     expect(JSON.stringify(planCall?.messages)).toContain('FOCUS doc');
     expect(JSON.stringify(planCall?.messages)).not.toContain('EXISTING FOCUS DOC');
     expect(done.kind).toBe('whitepaper');
@@ -222,8 +226,17 @@ describe('createGenerationService.generateWhitepaper', () => {
     const chunks: string[] = [];
     await service.generateWhitepaper({ sessionId: 's1' }, { onChunk: (d) => chunks.push(d) });
 
-    // Part 1 (focus prompt) leads, then the pipeline in order.
-    expect(seen.map((r) => (r.system ?? '').split('\n')[0])).toEqual([
+    // Part 1 (focus prompt) leads, then the pipeline in order. M08.A: the pipeline parts
+    // ride inside the composed system, so extract the embedded marker (FOCUS is raw).
+    const partMarker = (r: { system?: string }): string => {
+      const sys = r.system ?? '';
+      return (
+        ['FOCUS-SYSTEM-PROMPT', 'PLAN-SYS', 'CSS-SYS', 'HTML-SYS'].find((m) => sys.includes(m)) ??
+        sys.split('\n')[0] ??
+        ''
+      );
+    };
+    expect(seen.map(partMarker)).toEqual([
       'FOCUS-SYSTEM-PROMPT',
       'PLAN-SYS',
       'CSS-SYS',

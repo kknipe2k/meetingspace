@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 
-import { assembleDocument, fragmentViolation } from '../../electron/gen/assembly';
+import {
+  assembleDocument,
+  fragmentViolation,
+  isDocumentShellMarker,
+} from '../../electron/gen/assembly';
 import { sanitizeHtml } from '../../src/gen/sanitize-html';
 
 /*
@@ -90,6 +94,43 @@ describe('fragmentViolation — a model-emitted shell (or style block) is a prom
         '<h2>Title</h2><div class="callout"><ul><li>a</li></ul></div><table><tr><td>x</td></tr></table>',
       ),
     ).toBeNull();
+  });
+});
+
+describe('fragmentViolation — tag-BOUNDARY matching (M08.A): <header> is body markup, not a <head> shell', () => {
+  // The bug: 'lower.includes("<head")' is true for '<header…', so valid <header> body
+  // markup was rejected as a shell marker (main.log: marker=<head). The fix matches a
+  // protected tag only at a tag boundary (whitespace, >, or /). MUTATION: revert
+  // fragmentViolation to substring includes → every "accepted" case below fails.
+  it('accepts <header> and any element whose name merely BEGINS with a protected tag name', () => {
+    expect(fragmentViolation('<header class="document-header">Q3</header>')).toBeNull();
+    expect(fragmentViolation('<header>Title</header><h2>Body</h2>')).toBeNull();
+    expect(fragmentViolation('<HEADER>Shouting header</HEADER>')).toBeNull();
+    expect(fragmentViolation('<headline>x</headline>')).toBeNull();
+    // <bodyguard>, <styled-box>, <htmlish> all merely begin with a protected name.
+    expect(fragmentViolation('<section class="styled-box">x</section>')).toBeNull();
+    expect(fragmentViolation('<div class="html-note">x</div>')).toBeNull();
+  });
+
+  it('still detects the real shell/style tags at a boundary (>, whitespace, or /)', () => {
+    expect(fragmentViolation('<head>')).toBe('<head');
+    expect(fragmentViolation('<head data-x="1"><title>t</title></head>')).toBe('<head');
+    expect(fragmentViolation('<HEAD>')).toBe('<head');
+    expect(fragmentViolation('<head/>')).toBe('<head');
+    expect(fragmentViolation('<style>p{}</style>')).toBe('<style');
+    expect(fragmentViolation('<html lang="en"><p>x</p></html>')).toBe('<html');
+    expect(fragmentViolation('<body class="x">y</body>')).toBe('<body');
+    expect(fragmentViolation('<!doctype html><p>x</p>')).toBe('<!doctype');
+  });
+
+  it('isDocumentShellMarker: a document shell (recoverable) vs a bare <style> (rejected)', () => {
+    // Drives the service's recovery routing — a document marker is normalized; a bare
+    // <style> fragment is not (no document to extract), so it stays a rejection.
+    expect(isDocumentShellMarker('<!doctype')).toBe(true);
+    expect(isDocumentShellMarker('<html')).toBe(true);
+    expect(isDocumentShellMarker('<head')).toBe(true);
+    expect(isDocumentShellMarker('<body')).toBe(true);
+    expect(isDocumentShellMarker('<style')).toBe(false);
   });
 });
 

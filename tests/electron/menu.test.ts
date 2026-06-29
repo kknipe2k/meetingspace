@@ -71,7 +71,7 @@ describe('buildAppMenuTemplate', () => {
     }
   });
 
-  it('always includes the zoom and fullscreen/window roles', () => {
+  it('always includes the zoom (View) and fullscreen roles, plus an explicit Window submenu', () => {
     const template = buildAppMenuTemplate({
       platform: 'win32',
       isPackaged: true,
@@ -80,10 +80,55 @@ describe('buildAppMenuTemplate', () => {
     const roles = collectRoles(template);
 
     expect(roles).toContain('togglefullscreen');
-    expect(roles).toContain('windowMenu');
+    // M09: the built-in `windowMenu` role was replaced by an explicit Window submenu (it
+    // carried a dead macOS-style Zoom item on Windows). The role must no longer be present.
+    expect(roles).not.toContain('windowMenu');
+    expect(findByLabel(template, 'Window')).toBeDefined();
     expect(findByLabel(template, 'Zoom In')).toBeDefined();
     expect(findByLabel(template, 'Zoom Out')).toBeDefined();
     expect(findByLabel(template, 'Actual Size')).toBeDefined();
+  });
+
+  // M09 — the orphaned Window-menu zoom removal. The explicit Window submenu must carry no
+  // zoom item (role or label) on either platform, while keeping Minimize + the platform
+  // window control; the View zoom is the real, untouched zoom affordance.
+  for (const { platform, control } of [
+    { platform: 'win32' as const, control: 'close' },
+    { platform: 'darwin' as const, control: 'front' },
+  ]) {
+    it(`Window submenu has no zoom but keeps minimize + ${control} on ${platform}`, () => {
+      const template = buildAppMenuTemplate({
+        platform,
+        isPackaged: true,
+        commands: noopCommands(),
+      });
+      const window = findByLabel(template, 'Window');
+      expect(window).toBeDefined();
+      const submenu = Array.isArray(window?.submenu) ? window.submenu : [];
+
+      const windowRoles = submenu.map((item) => item.role);
+      expect(windowRoles).toContain('minimize');
+      expect(windowRoles).toContain(control);
+      // The teeth: no zoom in the Window submenu, by role OR label.
+      expect(windowRoles).not.toContain('zoom');
+      expect(
+        submenu.some((item) => typeof item.label === 'string' && /zoom/i.test(item.label)),
+      ).toBe(false);
+    });
+  }
+
+  it('keeps the View zoom (Zoom In / Out / Actual Size) intact after the Window-menu change', () => {
+    const template = buildAppMenuTemplate({
+      platform: 'win32',
+      isPackaged: true,
+      commands: noopCommands(),
+    });
+    const view = findByLabel(template, 'View');
+    expect(view).toBeDefined();
+    const submenu = Array.isArray(view?.submenu) ? view.submenu : [];
+    for (const label of ['Zoom In', 'Zoom Out', 'Actual Size']) {
+      expect(submenu.some((item) => item.label === label)).toBe(true);
+    }
   });
 
   it('OMITS DevTools and Reload when packaged (F1/F30 — the mutation pin)', () => {
