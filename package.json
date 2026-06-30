@@ -1,6 +1,6 @@
 {
   "name": "meetingspace",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Windows-first desktop note-taking app for meetings with a built-in Claude layer.",
   "private": true,
   "main": "out/main/main.js",

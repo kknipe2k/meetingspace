@@ -30,7 +30,10 @@ You'll need your own Anthropic API key for the Claude features (chat / white pap
 
 ## ✨ What's new in __VERSION__
 
-- **Build-attribution placement:** the Claude build attribution no longer appears in the in-app About dialog or the first-run screen.
-- Includes everything from 1.3.0: truthful gateway model tests (a real streaming probe that catches when the gateway silently **substitutes** a model), substituted models hidden from the chat and white-paper pickers, the **Test all** button, and the wider 200-model diagnostic.
+This is a maintenance release. It rolls up everything since the last public build (1.3.1) plus a round of security and dependency hardening.
+
+- **Security & dependency hardening (1.3.4):** the Markdown export now uses a real HTML parser internally (more robust on unusual markup; output unchanged for normal documents), a denial-of-service issue in a build dependency (`js-yaml`, CVE-2026-53550) is patched, and several other build/tooling dependencies were updated. None of these change how the app works day to day.
+- **Cleaner Window menu (1.3.3):** the native **Window** menu no longer shows a dead "Zoom" item that did nothing on Windows. The working text zoom under **View ▸ Zoom In / Zoom Out / Actual Size** (and Ctrl +/−/0) is unchanged.
+- **More reliable document generation (1.3.2):** fixes intermittent "structure validation" failures on valid white papers, hardens minutes generation against partial/cut-off responses, and makes the session usage counter accurate.
 
 Full details in CHANGELOG.md.

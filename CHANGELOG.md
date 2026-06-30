@@ -2,6 +2,13 @@
 
 Notable changes, newest first.
 
+## 1.3.4 — 2026-06-30
+
+- **Security & dependency hardening (no user-facing behavior change).** A maintenance release that resolves static-analysis (CodeQL) and dependency (Dependabot) findings; the app behaves the same.
+  - **More robust Markdown export:** the plain-text Markdown export now reduces the generated document with a real HTML parser (parse5) instead of regular expressions, so malformed or unusual markup can't slip text through. Output is unchanged for normal documents.
+  - **Dependency fixes:** updated `js-yaml` to 4.3.0 (resolves CVE-2026-53550, a denial-of-service in YAML merge-key handling) and applied non-breaking security updates to `undici`, `form-data`, and `tar`. These are build/tooling dependencies only — none ship inside the app.
+  - **Hardened CI:** GitHub Actions workflows now run with least-privilege token permissions, and CodeQL code scanning is enabled on the repository.
+
 ## 1.3.3 — 2026-06-29
 
 - **Cleaner Window menu:** the native **Window** menu no longer shows a dead "Zoom" item (a macOS-style control that did nothing on Windows). Minimize and Close remain; on macOS the menu keeps Minimize and Bring All to Front. The working text zoom under **View ▸ Zoom In / Zoom Out / Actual Size** (and Ctrl +/−/0) is unchanged.
