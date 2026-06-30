@@ -8,6 +8,12 @@ on:
   push:
   pull_request:
 
+# Least privilege: every job here only reads the repo (checkout) and runs gates. The
+# default token scope is broad, so pin it down at the top level; a job that needs more
+# can opt in explicitly. (CodeQL "Workflow does not contain permissions".)
+permissions:
+  contents: read
+
 jobs:
   gates:
     # Node-ABI-at-rest job (ADR-0003): npm ci leaves better-sqlite3 at the Node
