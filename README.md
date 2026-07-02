@@ -10,7 +10,7 @@ Capture notes, screenshots, and transcripts — then turn them into white papers
 
 Local-first · single-user · Windows & macOS · your data stays on your machine
 
-[![CI](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml/badge.svg)](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg) ![Release](https://img.shields.io/badge/release-v1.4.0-success.svg) ![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757.svg)
+[![CI](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml/badge.svg)](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg) ![Release](https://img.shields.io/badge/release-v1.4.1-success.svg) ![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757.svg)
 
 **[Download](#download--run)** · [Windows guide](INSTALL-WINDOWS.md) · [macOS guide](INSTALL-MACOS.md) · [What it does](#what-it-does) · [Privacy](#your-data--privacy)
 

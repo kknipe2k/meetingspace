@@ -2,6 +2,10 @@
 
 Notable changes, newest first.
 
+## 1.4.1 — 2026-07-02
+
+- **Re-release of 1.4.0 with the complete asset set.** The 1.4.0 release was published with Windows assets only (the macOS builds were never produced before the build machine failed), and the release is immutable, so the missing assets could not be attached. 1.4.1 is the same code shipped through the standard release pipeline with the full Windows + macOS asset set. No functional changes.
+
 ## 1.4.0 — 2026-07-01
 
 - **Set AI-cost prices in the app — no more editing a file.** MeetingSpace shows your Claude spend as *your token usage × a per-model price*. Tokens are always real (from Anthropic's response), but Anthropic's API doesn't return prices, so the price is a local number. New models (like **Claude Sonnet 5**) or a corporate gateway's negotiated rates may show **"cost unknown"** until you set a price — and now you set it right in **Settings**.
