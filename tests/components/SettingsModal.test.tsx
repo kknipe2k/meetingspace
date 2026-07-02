@@ -173,16 +173,29 @@ describe('SettingsModal', () => {
           unpricedCalls: 0,
         },
       })),
-      pricing: vi.fn(async () => [
-        { model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', inputPerMTok: 1, outputPerMTok: 5 },
-        {
-          model: 'claude-sonnet-4-6',
-          label: 'Claude Sonnet 4.6',
-          inputPerMTok: 3,
-          outputPerMTok: 15,
-        },
-        { model: 'claude-opus-4-8', label: 'Claude Opus 4.8', inputPerMTok: 5, outputPerMTok: 25 },
-      ]),
+      pricing: vi.fn(async () => ({
+        priced: [
+          {
+            model: 'claude-haiku-4-5',
+            label: 'Claude Haiku 4.5',
+            inputPerMTok: 1,
+            outputPerMTok: 5,
+          },
+          {
+            model: 'claude-sonnet-4-6',
+            label: 'Claude Sonnet 4.6',
+            inputPerMTok: 3,
+            outputPerMTok: 15,
+          },
+          {
+            model: 'claude-opus-4-8',
+            label: 'Claude Opus 4.8',
+            inputPerMTok: 5,
+            outputPerMTok: 25,
+          },
+        ],
+        unpriced: [],
+      })),
     };
     render(<SettingsModal client={fakeClient(EMPTY)} usageClient={usage} onClose={vi.fn()} />);
 

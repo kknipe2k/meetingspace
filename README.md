@@ -10,7 +10,7 @@ Capture notes, screenshots, and transcripts — then turn them into white papers
 
 Local-first · single-user · Windows & macOS · your data stays on your machine
 
-[![CI](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml/badge.svg)](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg) ![Release](https://img.shields.io/badge/release-v1.3.4-success.svg) ![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757.svg)
+[![CI](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml/badge.svg)](https://github.com/kknipe2k/meetingspace/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg) ![Release](https://img.shields.io/badge/release-v1.4.0-success.svg) ![Built with Claude](https://img.shields.io/badge/built%20with-Claude-d97757.svg)
 
 **[Download](#download--run)** · [Windows guide](INSTALL-WINDOWS.md) · [macOS guide](INSTALL-MACOS.md) · [What it does](#what-it-does) · [Privacy](#your-data--privacy)
 
@@ -68,6 +68,14 @@ The capture side — notes, screenshots, transcripts, search, autosave — works
 > **Generating a document takes time — be patient.** A full white paper is built in stages and can take **10+ minutes** to finish. The app shows progress while it works; that's expected, so leave it running rather than assuming it stalled. (Chat replies stream back quickly; it's the long-form documents that take a while.)
 
 > **Advanced:** if your organization runs an Anthropic-compatible gateway/proxy, you can point MeetingSpace at it (a base URL plus a bearer token) in Settings instead of using a direct Anthropic key.
+
+### AI cost tracking
+
+The app shows a running estimate of what your Claude use costs. **Cost is your token usage × a per-model price.** The token counts are real — they come straight from Anthropic's API responses — but Anthropic's API doesn't send back prices, so the price is **a local number you control**.
+
+- **Why a model can show "cost unknown."** A brand-new model (for example **Claude Sonnet 5**) or a **corporate gateway's negotiated rate** may not have a price yet. Rather than guess a wrong number, the app keeps counting the tokens but leaves the dollar figure as "cost unknown" until you set the price.
+- **Set a price in two clicks:** open **Settings → Token usage & cost**, find the model under the red **"Cost tracking off — set price"** control, and enter its input and output price (in $/MTok). It takes effect immediately — no reinstall. You can edit or delete a price there the same way.
+- **It stays local.** Prices are stored on your machine; the app makes **no extra network call** for pricing. (You can look up Anthropic's current published prices from a link in that Settings section.)
 
 ---
 

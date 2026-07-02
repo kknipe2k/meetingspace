@@ -191,6 +191,7 @@ const appClient: AppApi = {
   onCommand: () => () => undefined,
   onFullScreenChange: () => () => undefined,
   exitFullScreen: () => undefined,
+  openPricingDocs: () => undefined,
 };
 
 function renderApp(sessionFake: ReturnType<typeof fakeSessionClient>) {

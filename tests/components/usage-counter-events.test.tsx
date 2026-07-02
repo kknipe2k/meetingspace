@@ -53,7 +53,10 @@ describe('ChatPanel — usage counter refreshes on gen:run-ended (M08.C, modal-i
       .fn<UsageApi['summary']>()
       .mockResolvedValueOnce(summaryWith(1200, 5600))
       .mockResolvedValue(summaryWith(9000, 42000));
-    const usage: UsageApi = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageApi = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     render(
@@ -77,7 +80,10 @@ describe('ChatPanel — usage counter refreshes on gen:run-ended (M08.C, modal-i
 
   it('refreshes exactly once per run-ended event (no duplicate read)', async () => {
     const summary = vi.fn<UsageApi['summary']>(async () => summaryWith(10, 20));
-    const usage: UsageApi = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageApi = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     render(

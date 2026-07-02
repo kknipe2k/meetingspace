@@ -11,8 +11,11 @@ import { useToasts } from './useToasts';
  * so storage and the UI never desync.
  *
  * Pending timers are keyed so several deferrals can be in flight; a re-`remove` of a live key
- * supersedes the previous one. On unmount, pending timers are cleared WITHOUT committing — the
- * data-preserving direction (a delete left pending when the view goes away simply doesn't happen).
+ * supersedes the previous one. On unmount the default is to clear pending timers WITHOUT committing
+ * — the data-preserving direction (a delete left pending when the view goes away simply doesn't
+ * happen; right for note/session/bulk delete). A removal may opt into `onUnmount: 'commit'` to flush
+ * instead — closing the view commits the pending delete (Gmail's navigate-away-commits-undo
+ * semantics), used by the Settings price-delete so closing Settings doesn't silently cancel it.
  */
 const DEFAULT_GRACE_MS = 30000;
 
@@ -29,17 +32,34 @@ export interface DeferredRemoval {
   readonly errorMessage?: string;
   /** Grace window before the real delete fires; defaults to 6s. */
   readonly graceMs?: number;
+  /**
+   * What happens if the view unmounts while this removal is still pending in its grace window.
+   * `'cancel'` (default) clears the timer WITHOUT committing — the delete simply doesn't happen
+   * (data-preserving). `'commit'` fires `commit()` immediately from the unmount cleanup, dismisses
+   * the toast, and does NOT restore (the UI is gone) — the failure-toast catch still applies.
+   */
+  readonly onUnmount?: 'commit' | 'cancel';
 }
 
 export function useDeferredDelete(): { remove(removal: DeferredRemoval): void } {
   const { show, dismiss } = useToasts();
-  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Keep the full removal alongside its timer so the unmount cleanup can honor `onUnmount`.
+  const pending = useRef<
+    Map<string, { handle: ReturnType<typeof setTimeout>; removal: DeferredRemoval }>
+  >(new Map());
+
+  // Latest toast callbacks for the unmount-commit path, so the unmount effect can keep []-deps
+  // (its cleanup must run ONLY on real unmount, never on a show/dismiss identity change).
+  const showRef = useRef(show);
+  const dismissRef = useRef(dismiss);
+  showRef.current = show;
+  dismissRef.current = dismiss;
 
   const clearTimer = useCallback((key: string): void => {
-    const handle = timers.current.get(key);
-    if (handle !== undefined) {
-      clearTimeout(handle);
-      timers.current.delete(key);
+    const entry = pending.current.get(key);
+    if (entry !== undefined) {
+      clearTimeout(entry.handle);
+      pending.current.delete(key);
     }
   }, []);
 
@@ -64,7 +84,7 @@ export function useDeferredDelete(): { remove(removal: DeferredRemoval): void } 
       });
 
       const handle = setTimeout(() => {
-        timers.current.delete(removal.key);
+        pending.current.delete(removal.key);
         dismiss(removal.key);
         void removal.commit().catch(() => {
           removal.restore();
@@ -74,19 +94,31 @@ export function useDeferredDelete(): { remove(removal: DeferredRemoval): void } 
           });
         });
       }, grace);
-      timers.current.set(removal.key, handle);
+      pending.current.set(removal.key, { handle, removal });
     },
     [show, dismiss, clearTimer],
   );
 
-  // Clear pending timers on unmount WITHOUT committing (data-preserving).
+  // On unmount, resolve each pending removal by its `onUnmount` mode. `'cancel'` (default) clears
+  // the timer without committing (data-preserving — byte-unchanged from before). `'commit'` clears
+  // the timer, dismisses the toast, and fires commit() now (no restore — the view is gone; the
+  // failure-toast catch still applies).
   useEffect(() => {
-    const pending = timers.current;
+    const pendingMap = pending.current;
     return () => {
-      for (const handle of pending.values()) {
+      for (const { handle, removal } of pendingMap.values()) {
         clearTimeout(handle);
+        if (removal.onUnmount === 'commit') {
+          dismissRef.current(removal.key);
+          void removal.commit().catch(() => {
+            showRef.current({
+              variant: 'error',
+              message: removal.errorMessage ?? 'Could not complete the delete.',
+            });
+          });
+        }
       }
-      pending.clear();
+      pendingMap.clear();
     };
   }, []);
 

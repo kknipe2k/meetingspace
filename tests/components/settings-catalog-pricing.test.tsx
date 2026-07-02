@@ -51,7 +51,7 @@ function usageClient(): UsageApi {
         unpricedCalls: 0,
       },
     })),
-    pricing: vi.fn(async () => PRICING),
+    pricing: vi.fn(async () => ({ priced: PRICING, unpriced: [] })),
   };
 }
 

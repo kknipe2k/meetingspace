@@ -61,7 +61,7 @@ const SUMMARY: UsageSummary = {
 function usageClient(summary: UsageSummary): UsageApi {
   return {
     summary: vi.fn(async () => summary),
-    pricing: vi.fn(async () => []),
+    pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
   };
 }
 

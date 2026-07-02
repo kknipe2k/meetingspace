@@ -27,9 +27,10 @@ import type {
   LlmDone,
   LlmErrorPayload,
   LlmHeartbeat,
+  ModelPrice,
   Note,
   Prefs,
-  PricingEntry,
+  PricingStatus,
   ProviderConfig,
   ProviderId,
   RestoreResult,
@@ -178,12 +179,27 @@ export interface CatalogApi {
 /*
  * Real-usage token + cost counter (M06.D, ADR-0021/0022/0024, passive). `summary` takes the open
  * session id and returns the two today-windowed rollups (this session today + all sessions today);
- * `pricing` returns the config-driven price entries for Settings. No key, no DB handle — only
- * aggregate counts + prices.
+ * `pricing` returns the config-driven pricing status — priced entries + the active-provider catalog
+ * models that lack a price (M10.A, ADR-0027) — for Settings. No key, no DB handle — only aggregate
+ * counts + prices.
  */
 export interface UsageApi {
   summary(sessionId: string): Promise<UsageSummary>;
-  pricing(): Promise<PricingEntry[]>;
+  pricing(): Promise<PricingStatus>;
+}
+
+/*
+ * In-app price override (M10.A, ADR-0027). `update` writes a user-set price for a model (a new model
+ * the seed doesn't cover, or a corporate gateway's negotiated rate). Main re-validates the payload
+ * and persists it atomically, repricing the live counter with no restart. Read stays on
+ * `usage.pricing`. No key, no DB handle crosses — only a model id + price pair.
+ */
+export interface PricingApi {
+  update(model: string, price: ModelPrice): Promise<void>;
+  // M10.B (ADR-0027, §10): drop the user override for a model (a seed model reverts to its seed
+  // price, a non-seed model returns to "cost unknown"). Main re-validates the id and persists
+  // atomically, repricing the live counter with no restart. No price payload — only the model id.
+  delete(model: string): Promise<void>;
 }
 
 /*
@@ -303,6 +319,9 @@ export interface AppApi {
   onCommand(listener: (command: AppCommand) => void): () => void;
   onFullScreenChange(listener: (isFullScreen: boolean) => void): () => void;
   exitFullScreen(): void;
+  // M10.B ext#2: open the Anthropic pricing docs in the OS browser via an argument-less main-side
+  // shell.openExternal (deny-all window policy → no window.open/target=_blank). No URL crosses.
+  openPricingDocs(): void;
 }
 
 export interface WindowApi {
@@ -321,6 +340,7 @@ export interface WindowApi {
   readonly app: AppApi;
   readonly catalog: CatalogApi;
   readonly usage: UsageApi;
+  readonly pricing: PricingApi;
 }
 
 export function createWindowApi(
@@ -336,6 +356,7 @@ export function createWindowApi(
   app: AppApi,
   catalog: CatalogApi,
   usage: UsageApi,
+  pricing: PricingApi,
 ): WindowApi {
   return {
     meta: { appName: 'MeetingSpace' },
@@ -351,5 +372,6 @@ export function createWindowApi(
     app,
     catalog,
     usage,
+    pricing,
   };
 }

@@ -78,7 +78,10 @@ function take<T>(arr: T[], i: number): T {
 describe('useUsageCounter — event-driven refresh + monotonic ordering (M08.C)', () => {
   it('subscribes to gen:run-ended and refreshes the summary when a run settles', async () => {
     const summary = vi.fn(async () => summaryWith(5));
-    const usage: UsageClient = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageClient = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     const { result } = renderHook(() => useUsageCounter('s1', usage, gen.client));
@@ -93,7 +96,10 @@ describe('useUsageCounter — event-driven refresh + monotonic ordering (M08.C)'
 
   it('refreshes exactly once per run-ended event (no duplicate)', async () => {
     const summary = vi.fn(async () => summaryWith(5));
-    const usage: UsageClient = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageClient = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     renderHook(() => useUsageCounter('s1', usage, gen.client));
@@ -112,7 +118,10 @@ describe('useUsageCounter — event-driven refresh + monotonic ordering (M08.C)'
       pending.push(d);
       return d.promise;
     });
-    const usage: UsageClient = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageClient = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     const { result } = renderHook(() => useUsageCounter('s1', usage, gen.client));
@@ -147,7 +156,10 @@ describe('useUsageCounter — event-driven refresh + monotonic ordering (M08.C)'
       pending.push(d);
       return d.promise;
     });
-    const usage: UsageClient = { summary, pricing: vi.fn(async () => []) };
+    const usage: UsageClient = {
+      summary,
+      pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+    };
     const gen = fakeGenEvents();
 
     const { result, rerender } = renderHook(
@@ -194,7 +206,10 @@ describe('useUsageCounter — event-driven refresh + monotonic ordering (M08.C)'
         .fn<UsageClient['summary']>()
         .mockResolvedValueOnce(summaryWith(3))
         .mockRejectedValueOnce(new Error('read failed'));
-      const usage: UsageClient = { summary, pricing: vi.fn(async () => []) };
+      const usage: UsageClient = {
+        summary,
+        pricing: vi.fn(async () => ({ priced: [], unpriced: [] })),
+      };
       const gen = fakeGenEvents();
 
       const { result } = renderHook(() => useUsageCounter('s1', usage, gen.client));

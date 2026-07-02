@@ -66,7 +66,8 @@ test('renderer is sandboxed: bridge exposed, no Node require reachable', async (
   expect(exposure.hasApi).toBe(true);
   expect(exposure.hasRequire).toBe(false);
   // The full bridge surface as of M06: M06.A added `app`, M06.B `storage`, M06.D `catalog`+`usage`
-  // (alongside the original meta/sessions/notes/assets/capture/settings/llm/gen/search).
+  // (alongside the original meta/sessions/notes/assets/capture/settings/llm/gen/search). M10.A adds
+  // `pricing` — the in-app price-override write surface (ADR-0027).
   expect(exposure.apiKeys).toEqual([
     'app',
     'assets',
@@ -76,6 +77,7 @@ test('renderer is sandboxed: bridge exposed, no Node require reachable', async (
     'llm',
     'meta',
     'notes',
+    'pricing',
     'search',
     'sessions',
     'settings',

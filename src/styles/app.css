@@ -1017,9 +1017,16 @@ body {
 
 .settings-pricing-row {
   display: flex;
-  justify-content: space-between;
-  gap: calc(var(--space-4) * 1rem);
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
   font-size: calc(var(--text-sm) * 1rem);
+}
+
+/* The label · rate · Edit/Delete line; the inline edit form (M10.B) drops below it when open. */
+.settings-pricing-row-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space-3) * 1rem);
 }
 
 .settings-pricing-model {
@@ -1029,10 +1036,96 @@ body {
 .settings-pricing-rate {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* Edit + Delete controls on a priced row (M10.B) — sit at the right, after the rate. */
+.settings-pricing-actions {
+  display: flex;
+  gap: calc(var(--space-2) * 1rem);
 }
 
 .settings-pricing-note {
   margin-top: calc(var(--space-1) * 1rem);
+}
+
+/* An inline text link rendered as a button (M10.B ext#2) — the deny-all window policy forbids
+   <a href> navigation, so external links go over app:open-pricing-docs. Styled to read as a link
+   and stay in the tab order with a real accessible name. */
+.settings-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+.settings-link-button:hover {
+  text-decoration: none;
+}
+
+/* In-app price override (M10.B, ADR-0027). A catalog model the app can't price gets a prominent
+   danger-accented card prompting the user to set a price — "cost tracking off" until they do. The
+   inline form writes over pricing:update and the list re-fetches, so the model moves to the priced
+   list above and the live counter reprices. */
+.settings-pricing-unpriced {
+  margin: 0 0 calc(var(--space-3) * 1rem);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.settings-pricing-unpriced-row {
+  padding: calc(var(--space-3) * 1rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+
+.settings-pricing-unpriced-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--space-2) * 1rem);
+}
+
+.settings-pricing-unpriced-chip {
+  font-size: calc(var(--text-xs) * 1rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: 0 calc(var(--space-2) * 1rem);
+}
+
+.settings-set-price-btn {
+  margin-left: auto;
+}
+
+.settings-pricing-form {
+  margin-top: calc(var(--space-3) * 1rem);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: calc(var(--space-3) * 1rem);
+}
+
+.settings-pricing-field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) * 1rem);
+}
+
+.settings-pricing-field .settings-key-input {
+  width: 8rem;
 }
 
 /* Gateway diagnostics (curated picker). A scroll-bounded checklist of the gateway's advertised

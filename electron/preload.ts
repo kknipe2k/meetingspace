@@ -8,6 +8,7 @@ import { createCaptureApi } from './ipc/capture-bridge';
 import { createCatalogApi } from './ipc/catalog-bridge';
 import { createGenApi } from './ipc/gen-bridge';
 import { createLlmApi } from './ipc/llm-bridge';
+import { createPricingApi } from './ipc/pricing-bridge';
 import { createUsageApi } from './ipc/usage-bridge';
 import { createNotesApi } from './ipc/notes-bridge';
 import { createSearchApi } from './ipc/search-bridge';
@@ -35,6 +36,7 @@ const search = createSearchApi(invoke);
 const storage = createStorageApi(invoke);
 const catalog = createCatalogApi(invoke);
 const usage = createUsageApi(invoke);
+const pricing = createPricingApi(invoke);
 
 // The llm + gen bridges need event subscription (requestId-keyed chunk/done/error)
 // alongside invoke; `on` returns an unsubscribe that removes the wrapped listener.
@@ -69,5 +71,6 @@ contextBridge.exposeInMainWorld(
     app,
     catalog,
     usage,
+    pricing,
   ),
 );

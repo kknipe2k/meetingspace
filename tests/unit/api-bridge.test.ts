@@ -9,6 +9,7 @@ import {
   type GenApi,
   type LlmApi,
   type NotesApi,
+  type PricingApi,
   type SearchApi,
   type SessionApi,
   type SettingsApi,
@@ -104,6 +105,7 @@ const noopApp: AppApi = {
   onCommand: () => () => undefined,
   onFullScreenChange: () => () => undefined,
   exitFullScreen: () => undefined,
+  openPricingDocs: () => undefined,
 };
 
 const noopCatalog: CatalogApi = {
@@ -131,7 +133,12 @@ const noopUsage: UsageApi = {
         unpricedCalls: 0,
       },
     }),
-  pricing: () => Promise.resolve([]),
+  pricing: () => Promise.resolve({ priced: [], unpriced: [] }),
+};
+
+const noopPricing: PricingApi = {
+  update: () => Promise.resolve(),
+  delete: () => Promise.resolve(),
 };
 
 function buildApi() {
@@ -148,11 +155,12 @@ function buildApi() {
     noopApp,
     noopCatalog,
     noopUsage,
+    noopPricing,
   );
 }
 
 describe('preload contextBridge contract', () => {
-  it('exposes the meta surface plus the session, notes, assets, capture, settings, llm, gen, search, app, catalog, and usage APIs', () => {
+  it('exposes the meta surface plus the session, notes, assets, capture, settings, llm, gen, search, app, catalog, usage, and pricing APIs', () => {
     const api = buildApi();
 
     expect(Object.keys(api).sort()).toEqual([
@@ -164,6 +172,7 @@ describe('preload contextBridge contract', () => {
       'llm',
       'meta',
       'notes',
+      'pricing',
       'search',
       'sessions',
       'settings',
@@ -177,6 +186,7 @@ describe('preload contextBridge contract', () => {
       'exitFullScreen',
       'onCommand',
       'onFullScreenChange',
+      'openPricingDocs',
     ]);
   });
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 
 import { GENERATION_MAX_TOKENS } from '@shared/limits';
+import { ANTHROPIC_PRICING_URL } from '@shared/links';
 import type {
   CatalogModel,
   GatewayModelProfile,
@@ -11,6 +12,7 @@ import type {
   PricingEntry,
   ProviderConfig,
   ProviderId,
+  UnpricedModel,
 } from '@shared/types';
 import {
   curateGatewayModels,
@@ -18,12 +20,16 @@ import {
   prefsWithGatewayModelProfile,
 } from '@shared/models';
 
+import { useDeferredDelete } from '../hooks/useDeferredDelete';
 import { useMutationToast } from '../hooks/useMutationToast';
 import { useToasts } from '../hooks/useToasts';
 import {
+  appClient,
   catalogClient,
+  pricingClient as defaultPricingClient,
   storageClient,
   usageClient as defaultUsageClient,
+  type PricingClient,
   type SettingsClient,
   type StorageClient,
   type UsageClient,
@@ -40,6 +46,8 @@ export interface SettingsModalProps {
   storage?: StorageClient;
   /** Injectable for tests; defaults to the real usage IPC client (config-driven pricing, M06.D). */
   usageClient?: UsageClient;
+  /** Injectable for tests; defaults to the real pricing IPC client (in-app override, M10.B). */
+  pricingClient?: PricingClient;
   onClose(): void;
 }
 
@@ -88,6 +96,7 @@ export function SettingsModal({
   client,
   storage = storageClient,
   usageClient = defaultUsageClient,
+  pricingClient = defaultPricingClient,
   onClose,
 }: SettingsModalProps): ReactElement {
   const [provider, setProvider] = useState<ProviderId>('anthropic');
@@ -100,6 +109,13 @@ export function SettingsModal({
   const [providerError, setProviderError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pricing, setPricing] = useState<PricingEntry[]>([]);
+  // M10.B (ADR-0027): the active-provider catalog models with no price + the in-app override form
+  // state. Only one model is edited at a time, so a single pair of draft fields is shared.
+  const [unpriced, setUnpriced] = useState<UnpricedModel[]>([]);
+  const [editingModel, setEditingModel] = useState<string | null>(null);
+  const [inputDraft, setInputDraft] = useState('');
+  const [outputDraft, setOutputDraft] = useState('');
+  const [savingPrice, setSavingPrice] = useState(false);
   // Gateway diagnostics (curated picker): the FULL advertised model list, the user's working
   // selection (seeded from the saved curation), and the per-id "what does it actually serve" results.
   const [gatewayModels, setGatewayModels] = useState<CatalogModel[]>([]);
@@ -114,6 +130,13 @@ export function SettingsModal({
   const [modelSelectionError, setModelSelectionError] = useState<string | null>(null);
   const { surface } = useMutationToast();
   const { show } = useToasts();
+  // M10.B: delete a saved price via the F10 deferred-delete + Undo toast (optimistic remove; the
+  // real pricing:delete fires only after the grace window; Undo cancels it; a failure restores).
+  const { remove: deferRemove } = useDeferredDelete();
+  // M10.B ext#3: ids of price-deletes still pending (added on Delete; removed on Undo, commit, and
+  // failure-restore). The post-commit re-fetch runs only when this set is empty — last-mutation-wins
+  // reconciliation, so a commit doesn't re-fetch a still-pending sibling as priced (the snap-back).
+  const pendingPriceDeletes = useRef<Set<string>>(new Set());
   // Fire the "now test your models" nudge once per open, when a saved gateway list has never been
   // tested — an untested list can advertise models the gateway silently substitutes.
   const firstRunNudgeShown = useRef(false);
@@ -136,12 +159,20 @@ export function SettingsModal({
   }, []);
 
   // Config-driven pricing (M06.D, ADR-0021): the price list is read from the updatable pricing
-  // config main-side — NEVER hardcoded in this component.
+  // config main-side — NEVER hardcoded in this component. M10.B: usage.pricing returns
+  // { priced, unpriced }; the unpriced entries drive the in-app "set price" override.
+  const refetchPricing = useCallback(async (): Promise<void> => {
+    const status = await usageClient.pricing();
+    setPricing(status.priced);
+    setUnpriced(status.unpriced);
+  }, [usageClient]);
+
   useEffect(() => {
     let active = true;
-    void usageClient.pricing().then((entries) => {
+    void usageClient.pricing().then((status) => {
       if (active) {
-        setPricing(entries);
+        setPricing(status.priced);
+        setUnpriced(status.unpriced);
       }
     });
     return () => {
@@ -529,6 +560,178 @@ export function SettingsModal({
     }
   }, [storage, surface, show]);
 
+  // M10.B: client-side input hygiene — both fields must parse to a finite, non-negative number
+  // before Save enables. Main re-validates (Stage A), so the renderer is never the only guard.
+  const inputValue = Number(inputDraft);
+  const outputValue = Number(outputDraft);
+  const priceValid =
+    inputDraft.trim() !== '' &&
+    outputDraft.trim() !== '' &&
+    Number.isFinite(inputValue) &&
+    inputValue >= 0 &&
+    Number.isFinite(outputValue) &&
+    outputValue >= 0;
+
+  const beginSetPrice = useCallback((modelId: string): void => {
+    setEditingModel(modelId);
+    setInputDraft('');
+    setOutputDraft('');
+  }, []);
+
+  const cancelSetPrice = useCallback((): void => {
+    setEditingModel(null);
+    setInputDraft('');
+    setOutputDraft('');
+  }, []);
+
+  const handleSetPrice = useCallback(
+    async (modelId: string): Promise<void> => {
+      if (!priceValid) {
+        return;
+      }
+      setSavingPrice(true);
+      try {
+        const ok = await surface(
+          () =>
+            pricingClient
+              .update(modelId, { inputPerMTok: inputValue, outputPerMTok: outputValue })
+              .then(() => true),
+          "Couldn't save the price.",
+        );
+        if (ok === undefined) {
+          return; // failure surfaced; keep the form open so the user can retry
+        }
+        // Re-fetch (not an optimistic hide) so the model moves to the priced list AND the live
+        // counter reprices with the new number — the IRL teeth is the counter, not jsdom green.
+        await refetchPricing();
+        setEditingModel(null);
+        setInputDraft('');
+        setOutputDraft('');
+      } finally {
+        setSavingPrice(false);
+      }
+    },
+    [inputValue, outputValue, priceValid, pricingClient, refetchPricing, surface],
+  );
+
+  // M10.B: reopen the SAME inline form pre-filled with a priced model's current rate (edit reuses
+  // pricing:update — save-in-place, cancel reverts; mirror PromptTemplateEditor). editingModel is a
+  // single id, so only one row's form is ever open at a time (a new open supersedes the last).
+  const beginEditPrice = useCallback((entry: PricingEntry): void => {
+    setEditingModel(entry.model);
+    setInputDraft(String(entry.inputPerMTok));
+    setOutputDraft(String(entry.outputPerMTok));
+  }, []);
+
+  // M10.B (§10): delete a saved price — deferred (F10). Remove the row optimistically; the real
+  // pricing:delete fires only after the grace window. Undo restores and fires no delete. commit is
+  // the delete ONLY (its rejection is what restores); the re-fetch runs AFTER a successful delete
+  // with its own catch, so a re-fetch failure never restores a row already deleted on disk.
+  const handleDeletePrice = useCallback(
+    (entry: PricingEntry): void => {
+      const index = pricing.findIndex((e) => e.model === entry.model);
+      if (index < 0) {
+        return;
+      }
+      // Immediate reconcile (ext#2): the row leaves the priced list AND appears in the red "Cost
+      // tracking off" section in the SAME update — never absent from both. Undo/failure reverses
+      // both moves. (Every deleted model goes unpriced now — seed-revert is gone; the post-delete
+      // re-fetch replaces this optimistic entry with the authoritative one.)
+      setPricing((prev) => prev.filter((e) => e.model !== entry.model));
+      setUnpriced((prev) =>
+        prev.some((u) => u.id === entry.model)
+          ? prev
+          : [...prev, { id: entry.model, label: entry.label }],
+      );
+      // ext#3: this delete is now pending. Removed on every exit (Undo/failure via revertOptimistic;
+      // success in commit) — a leaked id would permanently suppress the post-commit re-fetch.
+      pendingPriceDeletes.current.add(entry.model);
+      const revertOptimistic = (): void => {
+        pendingPriceDeletes.current.delete(entry.model);
+        setPricing((prev) => {
+          if (prev.some((e) => e.model === entry.model)) {
+            return prev;
+          }
+          const next = [...prev];
+          next.splice(Math.min(index, next.length), 0, entry);
+          return next;
+        });
+        setUnpriced((prev) => prev.filter((u) => u.id !== entry.model));
+      };
+      deferRemove({
+        key: `price-del-${entry.model}`,
+        label: 'Price removed',
+        errorMessage: "Couldn't remove the price.",
+        // ext#3: closing Settings while the Undo toast is up commits the delete (Gmail
+        // navigate-away semantics) instead of the default cancel-on-unmount that would drop it.
+        onUnmount: 'commit',
+        commit: async () => {
+          await pricingClient.delete(entry.model);
+          pendingPriceDeletes.current.delete(entry.model);
+          // ext#3: reconcile + reprice the live counter ONLY after the LAST pending delete lands —
+          // re-fetching while a sibling delete is still pending would report it as priced and snap
+          // it back. A re-fetch failure must NOT restore a row already deleted on disk — swallow it.
+          if (pendingPriceDeletes.current.size === 0) {
+            void refetchPricing().catch(() => undefined);
+          }
+        },
+        restore: revertOptimistic,
+      });
+    },
+    [pricing, deferRemove, pricingClient, refetchPricing],
+  );
+
+  // The shared inline two-field price form (M10.B) — used by both the unpriced "Set price" flow and
+  // the priced-row "Edit" flow. Save-in-place and Cancel are identical; only the pre-fill differs
+  // (beginSetPrice clears, beginEditPrice pre-fills), so the form itself is one definition.
+  const renderPriceForm = (modelId: string): ReactElement => (
+    <form
+      className="settings-pricing-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSetPrice(modelId);
+      }}
+    >
+      <label className="settings-pricing-field">
+        <span className="settings-field-label">Input $/MTok</span>
+        <input
+          className="settings-key-input"
+          type="number"
+          min="0"
+          step="any"
+          inputMode="decimal"
+          value={inputDraft}
+          onChange={(event) => setInputDraft(event.target.value)}
+        />
+      </label>
+      <label className="settings-pricing-field">
+        <span className="settings-field-label">Output $/MTok</span>
+        <input
+          className="settings-key-input"
+          type="number"
+          min="0"
+          step="any"
+          inputMode="decimal"
+          value={outputDraft}
+          onChange={(event) => setOutputDraft(event.target.value)}
+        />
+      </label>
+      <div className="settings-actions">
+        <button type="submit" className="btn btn-primary" disabled={!priceValid || savingPrice}>
+          {savingPrice ? 'Saving…' : 'Save price'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={cancelSetPrice}
+          disabled={savingPrice}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+
   const isGateway = provider === 'gateway';
   const keyLabel = isGateway ? 'Gateway token' : 'Anthropic API key';
   const keyPlaceholder = isGateway ? 'sk-…' : 'sk-ant-…';
@@ -788,23 +991,90 @@ export function SettingsModal({
       <section className="settings-section" data-testid="settings-spend-guidance">
         <h3 className="settings-subheading">Token usage &amp; cost</h3>
         <p className="settings-help">
-          You pay for your own API usage. Approximate prices per million tokens (input / output),
-          read from an editable pricing config — update it as prices change, no reinstall needed:
+          Cost is your token usage × these prices. Anthropic doesn’t send prices in its API, so
+          they’re stored locally and you can set or edit them right here — no reinstall. A new model
+          (or a corporate gateway’s negotiated rate) may show “cost unknown” until you set a price
+          below.
         </p>
+        <p className="settings-help">
+          Anthropic’s current published prices:{' '}
+          <button
+            type="button"
+            className="settings-link-button"
+            aria-label="Open Anthropic pricing page in your browser"
+            onClick={() => appClient.openPricingDocs()}
+          >
+            {ANTHROPIC_PRICING_URL}
+          </button>
+        </p>
+
+        {unpriced.length > 0 && (
+          <ul className="settings-pricing-unpriced" data-testid="settings-pricing-unpriced">
+            {unpriced.map((model) => {
+              const editing = editingModel === model.id;
+              return (
+                <li key={model.id} className="settings-pricing-unpriced-row">
+                  <div className="settings-pricing-unpriced-head">
+                    <span className="settings-pricing-model">{model.label}</span>
+                    <span className="settings-pricing-unpriced-chip">Cost tracking off</span>
+                    {!editing && (
+                      <button
+                        type="button"
+                        className="btn btn-primary settings-set-price-btn"
+                        onClick={() => beginSetPrice(model.id)}
+                      >
+                        Set price
+                      </button>
+                    )}
+                  </div>
+                  {editing && renderPriceForm(model.id)}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
         <ul className="settings-pricing">
-          {pricing.map((entry) => (
-            <li key={entry.model} className="settings-pricing-row">
-              <span className="settings-pricing-model">{entry.label}</span>
-              <span className="settings-pricing-rate">
-                ${entry.inputPerMTok} / ${entry.outputPerMTok} per MTok
-              </span>
-            </li>
-          ))}
+          {pricing.map((entry) => {
+            const editing = editingModel === entry.model;
+            return (
+              <li key={entry.model} className="settings-pricing-row">
+                <div className="settings-pricing-row-head">
+                  <span className="settings-pricing-model">{entry.label}</span>
+                  <span className="settings-pricing-rate">
+                    ${entry.inputPerMTok} / ${entry.outputPerMTok} per MTok
+                  </span>
+                  {!editing && (
+                    <span className="settings-pricing-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        aria-label={`Edit price for ${entry.label}`}
+                        onClick={() => beginEditPrice(entry)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        aria-label={`Delete price for ${entry.label}`}
+                        onClick={() => handleDeletePrice(entry)}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  )}
+                </div>
+                {editing && renderPriceForm(entry.model)}
+              </li>
+            );
+          })}
         </ul>
+
         <p className="settings-help settings-pricing-note">
-          Prompt caching reuses the session context at roughly a tenth of the input price. A model
-          with no entry shows “cost unknown” in the counter — never a wrong number. The live token
-          counter (next to the chat) shows your real usage for this session and today.
+          Prompt caching reuses the session context at roughly a tenth of the input price. Prices
+          take effect immediately — the live token counter (next to the chat) shows your real usage
+          for this session and today.
         </p>
       </section>
 

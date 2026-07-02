@@ -26,7 +26,7 @@ export interface ChatModelOption {
 }
 
 // The date the per-MTok prices below were web-verified (advisory snapshot).
-export const PRICING_AS_OF = '2026-06-03';
+export const PRICING_AS_OF = '2026-06-30';
 
 export const CHAT_MODELS: readonly ChatModelOption[] = [
   {
@@ -42,6 +42,17 @@ export const CHAT_MODELS: readonly ChatModelOption[] = [
     inputPerMTok: 3,
     outputPerMTok: 15,
     maxOutputTokens: 64000,
+  },
+  // Claude Sonnet 5 (launched 2026-06-09; web-verified 2026-06-30 via anthropic.com/news +
+  // platform.claude.com/pricing). Seeded at the INTRODUCTORY rate $2 in / $10 out per MTok, in
+  // effect through 2026-08-31. MAINTAINER: on 2026-09-01 update these to the standard $3 / $15 (and
+  // bump PRICING_AS_OF); a user can also override in-app (Settings → set price, M10.B) meanwhile.
+  {
+    id: 'claude-sonnet-5',
+    label: 'Claude Sonnet 5',
+    inputPerMTok: 2,
+    outputPerMTok: 10,
+    maxOutputTokens: 128000,
   },
   {
     id: 'claude-opus-4-8',
