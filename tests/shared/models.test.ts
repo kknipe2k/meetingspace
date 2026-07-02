@@ -62,9 +62,12 @@ describe('curateGatewayModels', () => {
   ];
 
   it('falls back to the conservative non-Opus tiers when nothing is curated', () => {
+    // M10.A: the seed now includes claude-sonnet-5, so the conservative (uncurated) gateway fallback
+    // offers it too — still non-Opus, consistent with offering Sonnet 4.6.
     expect(curateGatewayModels(served, []).map((model) => model.id)).toEqual([
       'claude-haiku-4-5',
       'claude-sonnet-4-6',
+      'claude-sonnet-5',
     ]);
   });
 

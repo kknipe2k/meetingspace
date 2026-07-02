@@ -49,6 +49,8 @@ import { registerCaptureHandlers } from './ipc/capture-handlers';
 import { registerCatalogHandlers } from './ipc/catalog-handlers';
 import { registerGenHandlers, type GenIpcService } from './ipc/gen-handlers';
 import { registerLlmHandlers } from './ipc/llm-handlers';
+import { registerPricingHandlers } from './ipc/pricing-handlers';
+import { registerAppExternalHandlers } from './ipc/app-handlers';
 import { registerUsageHandlers } from './ipc/usage-handlers';
 import type { IpcHandleRegistrar, IpcSyncRegistrar } from './ipc/note-handlers';
 import { registerNoteHandlers } from './ipc/note-handlers';
@@ -971,7 +973,21 @@ app
     });
     registerUsageHandlers(registrar, {
       summary: (sessionId) => usageStore.summary(sessionId),
-      pricing: () => pricingConfig.entries(),
+      // M10.A (ADR-0027): the pricing read now carries priced + unpriced. Unpriced = the active
+      // provider's catalog models with no config price (prefix-aware), so Settings can prompt the
+      // user to set one. Reads the live catalog (fails soft to the static list — never empty).
+      pricing: async () => ({
+        priced: pricingConfig.entries(),
+        unpriced: pricingConfig.unpricedModels(await modelCatalog.list()),
+      }),
+    });
+    // M10.A (ADR-0027): the in-app price-override WRITE channel. Validates main-side, persists a
+    // user override atomically, and reprices the live UsageStore closure with no restart.
+    registerPricingHandlers(registrar, {
+      update: (model, price) => pricingConfig.updatePrice(model, price),
+      // M10.B (§10): drop a user override — reverts a seed model to its seed price, returns a
+      // non-seed model to unpriced, repricing the live UsageStore closure with no restart.
+      delete: (model) => pricingConfig.removePrice(model),
     });
     // Inject the real Electron screen-capture OS calls into the (Node-tested)
     // capture service — this wiring is the only uncovered line of the seam. The
@@ -1039,6 +1055,9 @@ app
     registrar.handle(APP_CHANNELS.exitFullScreen, () => {
       BrowserWindow.getFocusedWindow()?.setFullScreen(false);
     });
+    // M10.B ext#2: open the Anthropic pricing docs in the OS browser (argument-less; the handler
+    // opens the hardcoded constant, never a renderer-supplied URL — deny-all window policy stands).
+    registerAppExternalHandlers(registrar, { openExternal: (url) => void shell.openExternal(url) });
     Menu.setApplicationMenu(
       Menu.buildFromTemplate(
         buildAppMenuTemplate({

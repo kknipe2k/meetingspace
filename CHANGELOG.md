@@ -2,6 +2,16 @@
 
 Notable changes, newest first.
 
+## 1.4.0 — 2026-07-01
+
+- **Set AI-cost prices in the app — no more editing a file.** MeetingSpace shows your Claude spend as *your token usage × a per-model price*. Tokens are always real (from Anthropic's response), but Anthropic's API doesn't return prices, so the price is a local number. New models (like **Claude Sonnet 5**) or a corporate gateway's negotiated rates may show **"cost unknown"** until you set a price — and now you set it right in **Settings**.
+  - **Set a price:** an unpriced model shows a red **"Cost tracking off — set price"** control with input/output $/MTok fields. Save and the cost appears immediately — no restart, no reinstall.
+  - **Edit and delete:** a saved price can be changed (reopens pre-filled, cancel reverts) or removed. A deleted model goes back to "cost unknown" and **stays that way across restarts** — it won't silently revert to a built-in rate.
+  - **New models are priced automatically:** shipped prices now backfill into your existing settings on launch, while any price you set is preserved.
+  - **Claude Sonnet 5** is priced out of the box (at its introductory rate); its standard rate takes effect after the introductory window, and you can always override it.
+  - Prices are stored **locally** — the app makes no extra network call for pricing; the only outbound request remains the Claude call you trigger. A link in Settings opens Anthropic's current-pricing page in your browser.
+  - **Includes the previously-held v1.3.4 hardening** (Markdown-export parse5 rewrite; js-yaml / npm-audit dependency fixes; least-privilege CI) — this is the release that carries those fixes to the public build.
+
 ## 1.3.4 — 2026-06-30
 
 - **Security & dependency hardening (no user-facing behavior change).** A maintenance release that resolves static-analysis (CodeQL) and dependency (Dependabot) findings; the app behaves the same.

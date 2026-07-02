@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { NotesApi, SessionApi } from '@shared/api';
 
-import { noteClient, sessionClient } from '../../src/ipc/client';
+import { noteClient, pricingClient, sessionClient } from '../../src/ipc/client';
 
 // The renderer's single IPC entry point: every method must delegate to
 // window.api.{sessions,notes}.* (the contextBridge surface) and pass its args
@@ -114,5 +114,16 @@ describe('noteClient', () => {
   it('delegates reorder with sessionId and ordered ids', async () => {
     await noteClient.reorder('s1', ['n2', 'n1']);
     expect(calls).toEqual([{ method: 'reorder', args: ['s1', ['n2', 'n1']] }]);
+  });
+});
+
+// M10.A: the pricing write client is guarded like usageClient/catalogClient — the jsdom component
+// suites stub a PARTIAL window.api (sessions+notes only, no `pricing`), so it must degrade to a
+// resolved no-op rather than throwing.
+describe('pricingClient (guarded)', () => {
+  it('degrades to a resolved no-op when window.api lacks the pricing surface', async () => {
+    await expect(
+      pricingClient.update('claude-sonnet-5', { inputPerMTok: 2, outputPerMTok: 10 }),
+    ).resolves.toBeUndefined();
   });
 });

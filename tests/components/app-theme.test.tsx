@@ -99,6 +99,7 @@ function fakeApp(): { client: AppApi; emit(command: AppCommand): void } {
       },
       onFullScreenChange: () => () => undefined,
       exitFullScreen: () => undefined,
+      openPricingDocs: () => undefined,
     },
     emit: (command) => listener?.(command),
   };

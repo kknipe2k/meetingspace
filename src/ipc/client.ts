@@ -6,6 +6,7 @@ import type {
   GenApi,
   LlmApi,
   NotesApi,
+  PricingApi,
   SearchApi,
   SessionApi,
   SettingsApi,
@@ -35,6 +36,7 @@ export type StorageClient = StorageApi;
 export type AppClient = AppApi;
 export type CatalogClient = CatalogApi;
 export type UsageClient = UsageApi;
+export type PricingClient = PricingApi;
 
 export const sessionClient: SessionClient = {
   create: (name) => window.api.sessions.create(name),
@@ -131,7 +133,21 @@ export const usageClient: UsageClient = {
   summary: (sessionId) =>
     (window as { api?: WindowApi }).api?.usage?.summary?.(sessionId) ??
     Promise.resolve({ sessionToday: EMPTY_TOTALS, allToday: EMPTY_TOTALS }),
-  pricing: () => (window as { api?: WindowApi }).api?.usage?.pricing?.() ?? Promise.resolve([]),
+  pricing: () =>
+    (window as { api?: WindowApi }).api?.usage?.pricing?.() ??
+    Promise.resolve({ priced: [], unpriced: [] }),
+};
+
+// In-app price override (M10.A, ADR-0027). Guarded to the method like usageClient so the jsdom
+// component suites (which stub a partial window.api without `pricing`) degrade to a resolved no-op
+// rather than throwing. The write flows over pricing:update; main re-validates.
+export const pricingClient: PricingClient = {
+  update: (model, price) =>
+    (window as { api?: WindowApi }).api?.pricing?.update?.(model, price) ?? Promise.resolve(),
+  // M10.B (§10): drop a user override; main re-validates. Guarded like update so the jsdom suites
+  // (partial window.api without `pricing`) degrade to a resolved no-op rather than throwing.
+  delete: (model) =>
+    (window as { api?: WindowApi }).api?.pricing?.delete?.(model) ?? Promise.resolve(),
 };
 
 // M08.C: a guarded subscription to the app-wide gen:run-ended lifecycle event — the SOLE
@@ -194,4 +210,7 @@ export const appClient: AppClient = {
   onFullScreenChange: (listener) =>
     (window as { api?: WindowApi }).api?.app.onFullScreenChange(listener) ?? (() => undefined),
   exitFullScreen: () => (window as { api?: WindowApi }).api?.app.exitFullScreen(),
+  // M10.B ext#2: open the Anthropic pricing docs. Guarded like the rest so the jsdom suites (no
+  // window.api) degrade to a no-op rather than throwing.
+  openPricingDocs: () => (window as { api?: WindowApi }).api?.app.openPricingDocs(),
 };

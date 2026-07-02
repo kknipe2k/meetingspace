@@ -46,11 +46,12 @@ function fakeTransport(): {
 }
 
 describe('createAppApi', () => {
-  it('exposes exactly the onCommand, onFullScreenChange, and exitFullScreen methods', () => {
+  it('exposes exactly the onCommand, onFullScreenChange, exitFullScreen, and openPricingDocs methods', () => {
     expect(Object.keys(createAppApi(fakeTransport().transport)).sort()).toEqual([
       'exitFullScreen',
       'onCommand',
       'onFullScreenChange',
+      'openPricingDocs',
     ]);
   });
 
@@ -81,6 +82,14 @@ describe('createAppApi', () => {
     createAppApi(f.transport).exitFullScreen();
 
     expect(f.invokes).toEqual([{ channel: APP_CHANNELS.exitFullScreen, args: [] }]);
+  });
+
+  it('invokes the argument-less open-pricing-docs channel on openPricingDocs() (M10.B ext#2)', () => {
+    const f = fakeTransport();
+    createAppApi(f.transport).openPricingDocs();
+
+    // No renderer-supplied argument — the URL is chosen main-side.
+    expect(f.invokes).toEqual([{ channel: APP_CHANNELS.openPricingDocs, args: [] }]);
   });
 
   it('unsubscribes when the returned dispose is called', () => {

@@ -151,6 +151,22 @@ export const USAGE_CHANNELS = {
 export type UsageChannel = (typeof USAGE_CHANNELS)[keyof typeof USAGE_CHANNELS];
 
 /*
+ * In-app price override (M10.A, ADR-0027). `pricing:update` is a renderer→main WRITE carrying
+ * { model, price } — main validates (string id; finite, non-negative rates) then persists a user
+ * override atomically and reprices the live counter with no restart. The READ side stays on
+ * `usage:pricing` (now returning priced + unpriced), so this new channel doesn't orphan it. No key,
+ * no DB handle crosses.
+ */
+export const PRICING_CHANNELS = {
+  update: 'pricing:update',
+  // M10.B (§10): a renderer→main WRITE carrying { model } — main validates the id then drops the
+  // user override atomically (seed → seed price, non-seed → unpriced) and reprices the live counter.
+  delete: 'pricing:delete',
+} as const;
+
+export type PricingChannel = (typeof PRICING_CHANNELS)[keyof typeof PRICING_CHANNELS];
+
+/*
  * Document generation channels (M04.A; lives here per the single-source pattern,
  * mirroring LLM_CHANNELS). `generateFocus` is the streaming invoke trigger
  * carrying { sessionId, templateId?, model?, requestId } — never the key; main
@@ -254,6 +270,11 @@ export const APP_CHANNELS = {
   command: 'app:command',
   fullScreenChange: 'app:fullScreenChange',
   exitFullScreen: 'app:exitFullScreen',
+  // M10.B ext#2: an ARGUMENT-LESS renderer→main invoke that opens the Anthropic pricing docs in the
+  // OS browser (shell.openExternal on a hardcoded shared constant). The deny-all window-open policy
+  // forbids window.open/target=_blank, so external links route here; the handler ignores any
+  // renderer-supplied payload (no open-arbitrary-URL surface). No key, no DB handle.
+  openPricingDocs: 'app:open-pricing-docs',
 } as const;
 
 export type AppChannel = (typeof APP_CHANNELS)[keyof typeof APP_CHANNELS];

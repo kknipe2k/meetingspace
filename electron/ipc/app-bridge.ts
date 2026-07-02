@@ -22,5 +22,11 @@ export function createAppApi(transport: Pick<IpcStreamTransport, 'on' | 'invoke'
     exitFullScreen: (): void => {
       void transport.invoke(APP_CHANNELS.exitFullScreen);
     },
+
+    // M10.B ext#2: open the Anthropic pricing docs. Argument-less — main picks the URL, the renderer
+    // cannot steer it (deny-all window policy stands; no window.open).
+    openPricingDocs: (): void => {
+      void transport.invoke(APP_CHANNELS.openPricingDocs);
+    },
   };
 }

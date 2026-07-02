@@ -271,6 +271,29 @@ export interface PricingEntry {
   readonly outputPerMTok: number;
 }
 
+// The canonical per-model price pair (M10.A, ADR-0027). Shared so the in-app override WRITE channel
+// (pricing:update) can carry it without the renderer importing the main-side pricing module. The
+// pricing engine re-exports this as its ModelPrice so both sides speak the same shape.
+export interface ModelPrice {
+  readonly inputPerMTok: number;
+  readonly outputPerMTok: number;
+}
+
+// A catalog model the app has NO price for (M10.A, ADR-0027) — surfaced so Settings can prompt the
+// user to set one (a new model, or a corporate gateway's negotiated, unpublishable rate).
+export interface UnpricedModel {
+  readonly id: string;
+  readonly label: string;
+}
+
+// The pricing read payload (M10.A, ADR-0027). Extends the old PricingEntry[] to also carry the
+// active-provider catalog models that lack a price, so the single existing pricing consumer
+// (Settings) can list priced + unpriced together — no second read channel to orphan.
+export interface PricingStatus {
+  readonly priced: PricingEntry[];
+  readonly unpriced: UnpricedModel[];
+}
+
 // Real-usage token + cost rollup for one window (M06.D, ADR-0021, passive). Token totals are the
 // ACTUAL usage (never estimated). `costUsd` is the CONSERVATIVE SPLIT: the summed cost of priced
 // calls only (input + output + cache at the read/write multipliers); `unpricedCalls` counts calls

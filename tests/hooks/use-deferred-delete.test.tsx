@@ -121,3 +121,118 @@ describe('useDeferredDelete', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't delete note");
   });
 });
+
+/*
+ * Unmount behavior (M10.B ext#3). A pending removal caught mid-grace by an unmount takes one of two
+ * routes: 'cancel' (the byte-unchanged default — note/session/bulk delete: the delete simply doesn't
+ * happen, data-preserving) or 'commit' (opt-in — fire commit() immediately, dismiss the toast, no
+ * restore; the price-delete's Gmail-style "closing the view commits the pending undo" semantics).
+ * The ToastProvider stays mounted (like the app-level host surviving a Settings-modal close); only
+ * the Panel using the hook unmounts.
+ */
+function Panel({
+  commit,
+  restore,
+  onUnmount,
+}: {
+  commit: () => Promise<void>;
+  restore: () => void;
+  onUnmount?: 'commit' | 'cancel';
+}): ReactElement {
+  const { remove } = useDeferredDelete();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        remove({
+          key: 'del-x',
+          label: 'Removed',
+          graceMs: GRACE_MS,
+          errorMessage: "Couldn't remove",
+          commit,
+          restore,
+          // Only set onUnmount when provided (exactOptionalPropertyTypes rejects explicit undefined).
+          ...(onUnmount ? { onUnmount } : {}),
+        })
+      }
+    >
+      delete
+    </button>
+  );
+}
+
+function UnmountHarness({
+  commit,
+  restore,
+  onUnmount,
+}: {
+  commit: () => Promise<void>;
+  restore: () => void;
+  onUnmount?: 'commit' | 'cancel';
+}): ReactElement {
+  const [open, setOpen] = useState(true);
+  return (
+    <ToastProvider>
+      {open && <Panel commit={commit} restore={restore} {...(onUnmount ? { onUnmount } : {})} />}
+      <ToastHost />
+      <button type="button" onClick={() => setOpen(false)}>
+        close
+      </button>
+    </ToastProvider>
+  );
+}
+
+describe('useDeferredDelete — unmount behavior (M10.B ext#3)', () => {
+  it("onUnmount:'commit' fires commit() once, dismisses the toast, and does NOT restore", async () => {
+    const commit = vi.fn(() => Promise.resolve());
+    const restore = vi.fn();
+    render(<UnmountHarness commit={commit} restore={restore} onUnmount="commit" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    expect(screen.getByText('Removed')).toBeInTheDocument();
+    expect(commit).not.toHaveBeenCalled();
+
+    // Close the view while the Undo toast is still pending → flush the commit now (no grace wait).
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'close' }));
+    });
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(restore).not.toHaveBeenCalled(); // the UI is gone — nothing to restore
+    expect(screen.queryByText('Removed')).toBeNull(); // toast dismissed on flush
+
+    // The grace timer was cleared on flush — advancing does not fire a second commit.
+    await act(async () => {
+      vi.advanceTimersByTime(GRACE_MS * 2);
+    });
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('default (no onUnmount) still clears WITHOUT committing on unmount — regression pin', () => {
+    const commit = vi.fn(() => Promise.resolve());
+    const restore = vi.fn();
+    render(<UnmountHarness commit={commit} restore={restore} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'close' })); // unmount before grace
+    act(() => vi.advanceTimersByTime(GRACE_MS * 2));
+
+    // Data-preserving default is byte-unchanged: the delete never happened.
+    expect(commit).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("onUnmount:'commit' with a rejecting commit raises the error toast on unmount", async () => {
+    const commit = vi.fn(() => Promise.reject(new Error('disk full')));
+    const restore = vi.fn();
+    render(<UnmountHarness commit={commit} restore={restore} onUnmount="commit" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'delete' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'close' }));
+    });
+
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(restore).not.toHaveBeenCalled(); // no restore even on failure — the UI is gone
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't remove");
+  });
+});

@@ -6,7 +6,7 @@ import {
   type CatalogIpcService,
 } from '../../electron/ipc/catalog-handlers';
 import { registerUsageHandlers, type UsageIpcService } from '../../electron/ipc/usage-handlers';
-import type { CatalogModel, PricingEntry, UsageSummary } from '@shared/types';
+import type { CatalogModel, PricingStatus, UsageSummary } from '@shared/types';
 
 /*
  * The M06.D catalog + usage IPC surfaces (§10 IPC boundary). `catalog:list`/`catalog:refresh`
@@ -44,9 +44,14 @@ const SUMMARY: UsageSummary = {
     unpricedCalls: 0,
   },
 };
-const PRICING: PricingEntry[] = [
-  { model: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', inputPerMTok: 3, outputPerMTok: 15 },
-];
+// M10.A: usage:pricing now returns priced + unpriced (the Settings override UI needs both), so a
+// new price channel doesn't orphan the one existing pricing consumer.
+const PRICING_STATUS: PricingStatus = {
+  priced: [
+    { model: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', inputPerMTok: 3, outputPerMTok: 15 },
+  ],
+  unpriced: [{ id: 'claude-sonnet-5', label: 'Claude Sonnet 5' }],
+};
 
 describe('registerCatalogHandlers', () => {
   it('routes catalog:list and catalog:refresh to the service', async () => {
@@ -78,7 +83,7 @@ describe('registerUsageHandlers', () => {
         seen = sessionId;
         return SUMMARY;
       },
-      pricing: () => PRICING,
+      pricing: async () => PRICING_STATUS,
     };
     const reg = fakeRegistrar();
     registerUsageHandlers(reg, service);
@@ -90,15 +95,15 @@ describe('registerUsageHandlers', () => {
 
   it('rejects a non-string sessionId on usage:summary', () => {
     const reg = fakeRegistrar();
-    registerUsageHandlers(reg, { summary: () => SUMMARY, pricing: () => PRICING });
+    registerUsageHandlers(reg, { summary: () => SUMMARY, pricing: async () => PRICING_STATUS });
     expect(() => reg.handlers.get(USAGE_CHANNELS.summary)?.({})).toThrow(
       /sessionId must be a string/,
     );
   });
 
-  it('routes usage:pricing to the service', () => {
+  it('routes usage:pricing to the service (now returning priced + unpriced)', async () => {
     const reg = fakeRegistrar();
-    registerUsageHandlers(reg, { summary: () => SUMMARY, pricing: () => PRICING });
-    expect(reg.handlers.get(USAGE_CHANNELS.pricing)?.({})).toEqual(PRICING);
+    registerUsageHandlers(reg, { summary: () => SUMMARY, pricing: async () => PRICING_STATUS });
+    expect(await reg.handlers.get(USAGE_CHANNELS.pricing)?.({})).toEqual(PRICING_STATUS);
   });
 });
