@@ -132,7 +132,7 @@ Where your data lives (and how to wipe it completely) is documented in the per-O
 
 ## License & credits
 
-- **License:** [MIT](LICENSE). Copyright © 2026 MeetingSpace Project Contributors.
+- **License:** [MIT](LICENSE). Copyright © 2026 Kurt Knipe.
 - **AI assistance:** MeetingSpace was written almost entirely by AI (Anthropic's Claude), which also did the code review and testing. There was no line-by-line human code review; instead a human validated each release hands-on — running the app and confirming the AI's review and tests passed clean.
 - **Fonts:** generated documents self-host **Inter** and **Merriweather**, both under the SIL Open Font License 1.1 — full attribution in [`assets/fonts/NOTICE.md`](assets/fonts/NOTICE.md).
 

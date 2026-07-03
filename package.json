@@ -4,7 +4,7 @@
   "description": "Windows-first desktop note-taking app for meetings with a built-in Claude layer.",
   "private": true,
   "main": "out/main/main.js",
-  "author": "MeetingSpace",
+  "author": "Kurt Knipe",
   "license": "MIT",
   "comment-dependency-policy": "Runtime deps (react, react-dom, better-sqlite3) and the Electron runtime are pinned EXACT — the Electron ABI is load-bearing for the better-sqlite3 native rebuild. Dev tooling uses narrow patch-level ranges (~), EXCEPT the packaging tool electron-builder, pinned EXACT per Hard Rule §4.7 + ADR-0015 (it drives the shipped artifact). See docs/style.md 'Imports / dependencies'.",
   "comment-native-abi": "Dual-ABI: better-sqlite3 stays at Node ABI at rest (default install prebuild) so vitest (Node) and CI pass; rebuild:electron flips it to Electron's ABI for the app run path (predev/prestart). Never wire a bare postinstall electron-rebuild — it bricks the Node-ABI unit-test gate. See ADR-0003.",
